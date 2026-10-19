@@ -1,0 +1,919 @@
+import * as THREE from 'three';
+import { disposeObject3D } from '../../utils/dispose';
+import { GAME_CONFIG } from '../config';
+import { normalizeAngle, rotateTowardsAngle } from '../systems/movementMath';
+
+export interface PlayerStatus {
+  health: number;
+  maxHealth: number;
+  level: number;
+}
+
+const HULL_COLOR = 0x17384f;
+const HULL_ACCENT_COLOR = 0x8b3b3c;
+const DECK_COLOR = 0xc69b64;
+const DECK_DARK_COLOR = 0x83603f;
+const CABIN_COLOR = 0xd8d2c1;
+const METAL_COLOR = 0x394951;
+const DARK_METAL_COLOR = 0x1e2b31;
+const GOLD_COLOR = 0xd5b060;
+
+function createShipOutline(scale = 1): THREE.Shape {
+  const outline = new THREE.Shape();
+
+  outline.moveTo(-1.9 * scale, -4.8 * scale);
+  outline.bezierCurveTo(
+    -2.28 * scale,
+    -3.4 * scale,
+    -2.25 * scale,
+    1.1 * scale,
+    -1.6 * scale,
+    2.9 * scale,
+  );
+  outline.quadraticCurveTo(
+    -1.12 * scale,
+    4.2 * scale,
+    0,
+    5.55 * scale,
+  );
+  outline.quadraticCurveTo(
+    1.12 * scale,
+    4.2 * scale,
+    1.6 * scale,
+    2.9 * scale,
+  );
+  outline.bezierCurveTo(
+    2.25 * scale,
+    1.1 * scale,
+    2.28 * scale,
+    -3.4 * scale,
+    1.9 * scale,
+    -4.8 * scale,
+  );
+  outline.quadraticCurveTo(
+    0,
+    -5.25 * scale,
+    -1.9 * scale,
+    -4.8 * scale,
+  );
+
+  return outline;
+}
+
+function createHullGeometry(): THREE.ExtrudeGeometry {
+  const geometry = new THREE.ExtrudeGeometry(createShipOutline(), {
+    depth: 1.05,
+    steps: 1,
+    curveSegments: 14,
+    bevelEnabled: true,
+    bevelThickness: 0.16,
+    bevelSize: 0.13,
+    bevelSegments: 2,
+  });
+
+  geometry.rotateX(-Math.PI / 2);
+  geometry.computeBoundingBox();
+
+  const bounds = geometry.boundingBox;
+  if (!bounds) {
+    return geometry;
+  }
+
+  const height = bounds.max.y - bounds.min.y;
+  geometry.scale(1, 1.28 / height, 1);
+  geometry.computeBoundingBox();
+
+  const scaledBounds = geometry.boundingBox;
+  if (scaledBounds) {
+    geometry.translate(0, -scaledBounds.min.y - 0.55, 0);
+  }
+
+  return geometry;
+}
+
+function createExtrudedDetail(
+  scale: number,
+  depth: number,
+): THREE.ExtrudeGeometry {
+  const geometry = new THREE.ExtrudeGeometry(createShipOutline(scale), {
+    depth,
+    steps: 1,
+    curveSegments: 14,
+    bevelEnabled: false,
+  });
+
+  geometry.rotateX(-Math.PI / 2);
+  return geometry;
+}
+
+export class PlayerShip {
+  readonly root = new THREE.Group();
+  readonly status: PlayerStatus = {
+    health: GAME_CONFIG.player.maxHealth,
+    maxHealth: GAME_CONFIG.player.maxHealth,
+    level: 1,
+  };
+
+  private readonly visual = new THREE.Group();
+  private readonly gun = new THREE.Group();
+  private readonly muzzleMarkers: THREE.Object3D[] = [];
+  private readonly muzzleFlashes: THREE.Mesh[] = [];
+  private readonly muzzleFlashMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffcf7a,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+  private muzzleFlashTime = 0;
+  private evolutionTier = 1;
+  private disposed = false;
+
+  constructor() {
+    this.root.name = 'PlayerShip';
+    this.visual.name = 'PlayerShipVisual';
+    this.root.add(this.visual);
+
+    this.buildHull();
+    this.buildDeckDetails();
+    this.buildCabin();
+    this.buildMainGun();
+    this.buildMast();
+
+    this.root.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = object.userData.noShadow !== true;
+        object.receiveShadow = true;
+      }
+    });
+  }
+
+  updateVisual(elapsedTime: number, deltaTime: number): void {
+    this.visual.position.y = Math.sin(elapsedTime * 1.08) * 0.055;
+    this.visual.rotation.z = Math.sin(elapsedTime * 0.76 + 0.4) * 0.012;
+    this.visual.rotation.x = Math.sin(elapsedTime * 0.92 + 1.2) * 0.007;
+
+    if (this.muzzleFlashTime > 0) {
+      this.muzzleFlashTime = Math.max(0, this.muzzleFlashTime - deltaTime);
+      const visible = this.muzzleFlashTime > 0;
+      for (const flash of this.muzzleFlashes) {
+        flash.visible = visible;
+      }
+    }
+  }
+
+  /**
+   * Aims the independent main turret at a world-space point.
+   * Returns true when the barrel is close enough to fire.
+   */
+  aimTurretAt(worldTarget: THREE.Vector3, deltaTime: number): boolean {
+    const deltaX = worldTarget.x - this.root.position.x;
+    const deltaZ = worldTarget.z - this.root.position.z;
+
+    if (deltaX * deltaX + deltaZ * deltaZ < 0.0001) {
+      return true;
+    }
+
+    const desiredWorldYaw = Math.atan2(-deltaX, -deltaZ);
+    const desiredLocalYaw = normalizeAngle(
+      desiredWorldYaw - this.root.rotation.y,
+    );
+
+    this.gun.rotation.y = rotateTowardsAngle(
+      this.gun.rotation.y,
+      desiredLocalYaw,
+      GAME_CONFIG.turret.turnSpeed * deltaTime,
+    );
+
+    return (
+      Math.abs(normalizeAngle(desiredLocalYaw - this.gun.rotation.y)) <=
+      GAME_CONFIG.turret.aimTolerance
+    );
+  }
+
+  relaxTurret(deltaTime: number): void {
+    this.gun.rotation.y = rotateTowardsAngle(
+      this.gun.rotation.y,
+      0,
+      GAME_CONFIG.turret.turnSpeed * deltaTime,
+    );
+  }
+
+  getMuzzleWorldPositions(out: THREE.Vector3[]): number {
+    this.root.updateMatrixWorld(true);
+
+    let count = 0;
+    for (const marker of this.muzzleMarkers) {
+      const target = out[count];
+      if (!target) {
+        break;
+      }
+      marker.getWorldPosition(target);
+      count += 1;
+    }
+
+    return count;
+  }
+
+  triggerMuzzleFlash(): void {
+    this.muzzleFlashTime = 0.075;
+    for (const flash of this.muzzleFlashes) {
+      flash.visible = true;
+    }
+  }
+
+  getAimPoint(out: THREE.Vector3): THREE.Vector3 {
+    return out.set(
+      this.root.position.x,
+      this.root.position.y + GAME_CONFIG.player.aimPointHeight,
+      this.root.position.z,
+    );
+  }
+
+  get evolutionStage(): number {
+    return this.evolutionTier;
+  }
+
+  /**
+   * Adds programmatically generated weapon and armor geometry when the run
+   * reaches configured level thresholds. Returns true when the ship changed.
+   */
+  applyEvolution(level: number): boolean {
+    if (this.disposed) {
+      return false;
+    }
+
+    let targetTier = 1;
+    for (const threshold of GAME_CONFIG.evolution.levels) {
+      if (level >= threshold) {
+        targetTier += 1;
+      }
+    }
+
+    let evolved = false;
+
+    while (this.evolutionTier < targetTier) {
+      this.evolutionTier += 1;
+      this.buildEvolutionStage(this.evolutionTier);
+      evolved = true;
+    }
+
+    return evolved;
+  }
+
+  get isDestroyed(): boolean {
+    return this.status.health <= 0;
+  }
+
+  /** Returns the actual damage applied after armor. */
+  takeDamage(rawDamage: number): number {
+    if (rawDamage <= 0 || this.status.health <= 0) {
+      return 0;
+    }
+
+    const damage = Math.max(
+      1,
+      Math.round(rawDamage - GAME_CONFIG.player.armor),
+    );
+    const appliedDamage = Math.min(this.status.health, damage);
+    this.status.health -= appliedDamage;
+    return appliedDamage;
+  }
+
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    disposeObject3D(this.root);
+    this.root.clear();
+    this.muzzleMarkers.length = 0;
+    this.muzzleFlashes.length = 0;
+  }
+
+  private buildHull(): void {
+    const hullMaterial = new THREE.MeshStandardMaterial({
+      color: HULL_COLOR,
+      metalness: 0.24,
+      roughness: 0.52,
+      flatShading: true,
+    });
+    const stripeMaterial = new THREE.MeshStandardMaterial({
+      color: HULL_ACCENT_COLOR,
+      metalness: 0.15,
+      roughness: 0.62,
+    });
+    const deckMaterial = new THREE.MeshStandardMaterial({
+      color: DECK_COLOR,
+      metalness: 0.02,
+      roughness: 0.83,
+    });
+
+    const hull = new THREE.Mesh(createHullGeometry(), hullMaterial);
+    hull.name = 'Hull';
+    this.visual.add(hull);
+
+    const stripe = new THREE.Mesh(
+      createExtrudedDetail(1.028, 0.13),
+      stripeMaterial,
+    );
+    stripe.name = 'HullAccent';
+    stripe.position.y = 0.11;
+    this.visual.add(stripe);
+
+    const deck = new THREE.Mesh(
+      createExtrudedDetail(0.84, 0.1),
+      deckMaterial,
+    );
+    deck.name = 'Deck';
+    deck.position.y = 0.7;
+    this.visual.add(deck);
+
+    const deckOutlinePoints = createShipOutline(0.84)
+      .getPoints(96)
+      .map((point) => new THREE.Vector3(point.x, 0.825, -point.y));
+    const deckOutlineGeometry = new THREE.BufferGeometry().setFromPoints(
+      deckOutlinePoints,
+    );
+    const deckOutline = new THREE.LineLoop(
+      deckOutlineGeometry,
+      new THREE.LineBasicMaterial({
+        color: GOLD_COLOR,
+        transparent: true,
+        opacity: 0.42,
+      }),
+    );
+    deckOutline.name = 'DeckTrim';
+    this.visual.add(deckOutline);
+
+    const centrePlank = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.018, 4.5),
+      new THREE.MeshStandardMaterial({
+        color: DECK_DARK_COLOR,
+        roughness: 0.9,
+      }),
+    );
+    centrePlank.position.set(0, 0.81, -0.5);
+    this.visual.add(centrePlank);
+  }
+
+  private buildDeckDetails(): void {
+    const metalMaterial = new THREE.MeshStandardMaterial({
+      color: METAL_COLOR,
+      metalness: 0.72,
+      roughness: 0.36,
+    });
+
+    const hatch = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.04, 0.92),
+      new THREE.MeshStandardMaterial({
+        color: 0x5a4834,
+        metalness: 0.08,
+        roughness: 0.75,
+      }),
+    );
+    hatch.position.set(-0.72, 0.85, 0.55);
+    this.visual.add(hatch);
+
+    const hatchRim = new THREE.Mesh(
+      new THREE.BoxGeometry(0.82, 0.045, 1.02),
+      metalMaterial,
+    );
+    hatchRim.position.set(-0.72, 0.835, 0.55);
+    this.visual.add(hatchRim);
+
+    const bollardGeometry = new THREE.CylinderGeometry(0.075, 0.09, 0.24, 8);
+    for (const [x, z] of [
+      [-1.15, 3.55],
+      [1.15, 3.55],
+      [-1.2, -1.6],
+      [1.2, -1.6],
+    ] as const) {
+      const bollard = new THREE.Mesh(bollardGeometry, metalMaterial);
+      bollard.position.set(x, 0.92, z);
+      this.visual.add(bollard);
+    }
+
+    const railMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.68,
+      roughness: 0.34,
+    });
+    const postGeometry = new THREE.CylinderGeometry(0.026, 0.032, 0.2, 6);
+    const railGeometry = new THREE.BoxGeometry(0.04, 0.04, 4.25);
+
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(railGeometry, railMaterial);
+      rail.position.set(side * 1.7, 1.0, 1.2);
+      this.visual.add(rail);
+
+      for (const z of [-0.8, 0.2, 1.2, 2.2, 3.2]) {
+        const post = new THREE.Mesh(postGeometry, metalMaterial);
+        post.position.set(side * 1.7, 0.905, z);
+        this.visual.add(post);
+      }
+    }
+
+    const plankSeamGeometry = new THREE.BoxGeometry(0.012, 0.01, 3.9);
+    const plankSeamMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8b6946,
+      roughness: 0.95,
+    });
+    for (const x of [-1.05, -0.52, 0.52, 1.05]) {
+      const seam = new THREE.Mesh(plankSeamGeometry, plankSeamMaterial);
+      seam.position.set(x, 0.806, 0.25);
+      this.visual.add(seam);
+    }
+  }
+
+  private buildCabin(): void {
+    const cabinMaterial = new THREE.MeshStandardMaterial({
+      color: CABIN_COLOR,
+      metalness: 0.04,
+      roughness: 0.62,
+      flatShading: true,
+    });
+    const roofMaterial = new THREE.MeshStandardMaterial({
+      color: 0x263a43,
+      metalness: 0.28,
+      roughness: 0.54,
+      flatShading: true,
+    });
+    const windowMaterial = new THREE.MeshStandardMaterial({
+      color: 0x17333c,
+      emissive: 0xffc66e,
+      emissiveIntensity: 0.48,
+      metalness: 0.38,
+      roughness: 0.24,
+    });
+    const metalMaterial = new THREE.MeshStandardMaterial({
+      color: METAL_COLOR,
+      metalness: 0.72,
+      roughness: 0.36,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.72,
+      roughness: 0.3,
+    });
+
+    const cabinBase = new THREE.Mesh(
+      new THREE.BoxGeometry(2.0, 0.8, 1.65),
+      cabinMaterial,
+    );
+    cabinBase.position.set(0, 1.22, 2.42);
+    this.visual.add(cabinBase);
+
+    const cabinRoof = new THREE.Mesh(
+      new THREE.BoxGeometry(2.14, 0.11, 1.79),
+      roofMaterial,
+    );
+    cabinRoof.position.set(0, 1.67, 2.42);
+    this.visual.add(cabinRoof);
+
+    const bridge = new THREE.Mesh(
+      new THREE.BoxGeometry(1.25, 0.42, 0.92),
+      cabinMaterial,
+    );
+    bridge.position.set(0, 1.91, 2.42);
+    this.visual.add(bridge);
+
+    const bridgeRoof = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 0.09, 1.04),
+      roofMaterial,
+    );
+    bridgeRoof.position.set(0, 2.16, 2.42);
+    this.visual.add(bridgeRoof);
+
+    for (const x of [-0.56, 0, 0.56]) {
+      const window = new THREE.Mesh(
+        new THREE.BoxGeometry(0.34, 0.22, 0.045),
+        windowMaterial,
+      );
+      window.position.set(x, 1.27, 1.575);
+      this.visual.add(window);
+    }
+
+    for (const x of [-0.31, 0.31]) {
+      const window = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.15, 0.035),
+        windowMaterial,
+      );
+      window.position.set(x, 1.92, 1.94);
+      this.visual.add(window);
+    }
+
+    for (const side of [-1, 1]) {
+      for (const z of [2.16, 2.66]) {
+        const window = new THREE.Mesh(
+          new THREE.BoxGeometry(0.035, 0.2, 0.3),
+          windowMaterial,
+        );
+        window.position.set(side * 1.012, 1.27, z);
+        this.visual.add(window);
+      }
+    }
+
+    const funnel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.22, 0.68, 12),
+      metalMaterial,
+    );
+    funnel.position.set(0, 1.15, 3.52);
+    this.visual.add(funnel);
+
+    const funnelBand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.205, 0.205, 0.075, 12),
+      goldMaterial,
+    );
+    funnelBand.position.set(0, 1.37, 3.52);
+    this.visual.add(funnelBand);
+
+    const navigationLightGeometry = new THREE.SphereGeometry(0.055, 8, 6);
+    for (const side of [-1, 1]) {
+      const light = new THREE.Mesh(
+        navigationLightGeometry,
+        new THREE.MeshStandardMaterial({
+          color: side < 0 ? 0xff5b4d : 0x5cf1a1,
+          emissive: side < 0 ? 0xff3b2f : 0x35e38b,
+          emissiveIntensity: 1.1,
+          roughness: 0.4,
+        }),
+      );
+      light.position.set(side * 0.69, 2.0, 1.92);
+      this.visual.add(light);
+    }
+  }
+
+  private buildMainGun(): void {
+    const turretMaterial = new THREE.MeshStandardMaterial({
+      color: 0x65757b,
+      metalness: 0.55,
+      roughness: 0.38,
+      flatShading: true,
+    });
+    const darkMetalMaterial = new THREE.MeshStandardMaterial({
+      color: DARK_METAL_COLOR,
+      metalness: 0.72,
+      roughness: 0.32,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.74,
+      roughness: 0.28,
+    });
+
+    this.gun.name = 'MainGun';
+    this.gun.position.set(0, 0.82, -1.92);
+
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.7, 0.8, 0.2, 20),
+      darkMetalMaterial,
+    );
+    base.position.y = 0.1;
+    this.gun.add(base);
+
+    const baseTrim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.75, 0.75, 0.045, 20),
+      goldMaterial,
+    );
+    baseTrim.position.y = 0.195;
+    this.gun.add(baseTrim);
+
+    const turret = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.6, 0.73, 0.46, 8),
+      turretMaterial,
+    );
+    turret.rotation.y = Math.PI / 8;
+    turret.scale.z = 1.35;
+    turret.position.y = 0.45;
+    this.gun.add(turret);
+
+    const turretRoof = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.49, 0.55, 0.08, 8),
+      turretMaterial,
+    );
+    turretRoof.rotation.y = Math.PI / 8;
+    turretRoof.scale.z = 1.25;
+    turretRoof.position.y = 0.72;
+    this.gun.add(turretRoof);
+
+    const mantlet = new THREE.Mesh(
+      new THREE.BoxGeometry(1.14, 0.3, 0.32),
+      darkMetalMaterial,
+    );
+    mantlet.position.set(0, 0.46, -0.72);
+    this.gun.add(mantlet);
+
+    const barrelGeometry = new THREE.CylinderGeometry(0.072, 0.082, 2.15, 12);
+    const sleeveGeometry = new THREE.CylinderGeometry(0.1, 0.115, 0.34, 12);
+    const muzzleGeometry = new THREE.CylinderGeometry(0.092, 0.102, 0.27, 12);
+    const muzzleBandGeometry = new THREE.CylinderGeometry(
+      0.105,
+      0.105,
+      0.055,
+      12,
+    );
+    const muzzleFlashGeometry = new THREE.SphereGeometry(0.19, 8, 6);
+
+    for (const x of [-0.22, 0.22]) {
+      const barrel = new THREE.Mesh(barrelGeometry, darkMetalMaterial);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(x, 0.47, -1.68);
+      this.gun.add(barrel);
+
+      const sleeve = new THREE.Mesh(sleeveGeometry, turretMaterial);
+      sleeve.rotation.x = Math.PI / 2;
+      sleeve.position.set(x, 0.47, -0.93);
+      this.gun.add(sleeve);
+
+      const muzzle = new THREE.Mesh(muzzleGeometry, darkMetalMaterial);
+      muzzle.rotation.x = Math.PI / 2;
+      muzzle.position.set(x, 0.47, -2.62);
+      this.gun.add(muzzle);
+
+      const muzzleBand = new THREE.Mesh(muzzleBandGeometry, goldMaterial);
+      muzzleBand.rotation.x = Math.PI / 2;
+      muzzleBand.position.set(x, 0.47, -2.5);
+      this.gun.add(muzzleBand);
+
+      const muzzleMarker = new THREE.Object3D();
+      muzzleMarker.position.set(x, 0.47, -2.78);
+      this.gun.add(muzzleMarker);
+      this.muzzleMarkers.push(muzzleMarker);
+
+      const muzzleFlash = new THREE.Mesh(
+        muzzleFlashGeometry,
+        this.muzzleFlashMaterial,
+      );
+      muzzleFlash.position.copy(muzzleMarker.position);
+      muzzleFlash.scale.set(1, 0.62, 1);
+      muzzleFlash.visible = false;
+      muzzleFlash.userData.noShadow = true;
+      this.gun.add(muzzleFlash);
+      this.muzzleFlashes.push(muzzleFlash);
+    }
+
+    this.visual.add(this.gun);
+  }
+
+  private buildEvolutionStage(stage: number): void {
+    if (stage === 2) {
+      this.addExtraMainBarrel(-0.56);
+      this.addExtraMainBarrel(0.56);
+      return;
+    }
+
+    if (stage === 3) {
+      this.addSideTurrets();
+      this.addBowArmor(false);
+      return;
+    }
+
+    if (stage === 4) {
+      this.addExtraMainBarrel(0);
+      this.addBowArmor(true);
+      this.addSternGlow();
+    }
+  }
+
+  private addExtraMainBarrel(x: number): void {
+    const darkMetalMaterial = new THREE.MeshStandardMaterial({
+      color: DARK_METAL_COLOR,
+      metalness: 0.72,
+      roughness: 0.32,
+    });
+    const turretMaterial = new THREE.MeshStandardMaterial({
+      color: 0x65757b,
+      metalness: 0.55,
+      roughness: 0.38,
+      flatShading: true,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.74,
+      roughness: 0.28,
+    });
+
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.072, 0.082, 2.15, 12),
+      darkMetalMaterial,
+    );
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(x, 0.47, -1.68);
+    barrel.castShadow = true;
+    barrel.receiveShadow = true;
+    this.gun.add(barrel);
+
+    const sleeve = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.115, 0.34, 12),
+      turretMaterial,
+    );
+    sleeve.rotation.x = Math.PI / 2;
+    sleeve.position.set(x, 0.47, -0.93);
+    sleeve.castShadow = true;
+    sleeve.receiveShadow = true;
+    this.gun.add(sleeve);
+
+    const muzzle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.092, 0.102, 0.27, 12),
+      darkMetalMaterial,
+    );
+    muzzle.rotation.x = Math.PI / 2;
+    muzzle.position.set(x, 0.47, -2.62);
+    muzzle.castShadow = true;
+    muzzle.receiveShadow = true;
+    this.gun.add(muzzle);
+
+    const muzzleBand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.105, 0.105, 0.055, 12),
+      goldMaterial,
+    );
+    muzzleBand.rotation.x = Math.PI / 2;
+    muzzleBand.position.set(x, 0.47, -2.5);
+    muzzleBand.castShadow = true;
+    muzzleBand.receiveShadow = true;
+    this.gun.add(muzzleBand);
+
+    const marker = new THREE.Object3D();
+    marker.position.set(x, 0.47, -2.78);
+    this.gun.add(marker);
+    this.muzzleMarkers.push(marker);
+
+    const flash = new THREE.Mesh(
+      new THREE.SphereGeometry(0.19, 8, 6),
+      this.muzzleFlashMaterial,
+    );
+    flash.position.copy(marker.position);
+    flash.scale.set(1, 0.62, 1);
+    flash.visible = false;
+    flash.userData.noShadow = true;
+    this.gun.add(flash);
+    this.muzzleFlashes.push(flash);
+  }
+
+  private addSideTurrets(): void {
+    const group = new THREE.Group();
+    group.name = 'EvolutionSideTurrets';
+    const metalMaterial = new THREE.MeshStandardMaterial({
+      color: DARK_METAL_COLOR,
+      metalness: 0.72,
+      roughness: 0.34,
+    });
+    const turretMaterial = new THREE.MeshStandardMaterial({
+      color: 0x65757b,
+      metalness: 0.55,
+      roughness: 0.4,
+      flatShading: true,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.72,
+      roughness: 0.3,
+    });
+
+    for (const side of [-1, 1]) {
+      const mount = new THREE.Group();
+      mount.position.set(side * 1.28, 0.84, 0.15);
+
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.32, 0.4, 0.14, 10),
+        metalMaterial,
+      );
+      base.position.y = 0.06;
+      mount.add(base);
+
+      const ring = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.34, 0.34, 0.035, 10),
+        goldMaterial,
+      );
+      ring.position.y = 0.14;
+      mount.add(ring);
+
+      const turret = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.31, 0.2, 6),
+        turretMaterial,
+      );
+      turret.position.y = 0.25;
+      mount.add(turret);
+
+      const barrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.055, 0.95, 8),
+        metalMaterial,
+      );
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.27, -0.5);
+      mount.add(barrel);
+
+      group.add(mount);
+    }
+
+    group.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    this.visual.add(group);
+  }
+
+  private addBowArmor(heavy: boolean): void {
+    const armorMaterial = new THREE.MeshStandardMaterial({
+      color: heavy ? 0x3a4f58 : 0x2c424d,
+      metalness: 0.66,
+      roughness: 0.38,
+      flatShading: true,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.76,
+      roughness: 0.28,
+    });
+
+    const plate = new THREE.Mesh(
+      new THREE.BoxGeometry(heavy ? 1.3 : 0.95, 0.07, heavy ? 1.6 : 1.1),
+      armorMaterial,
+    );
+    plate.position.set(0, heavy ? 0.9 : 0.865, -3.35);
+    plate.castShadow = true;
+    plate.receiveShadow = true;
+    this.visual.add(plate);
+
+    const trim = new THREE.Mesh(
+      new THREE.BoxGeometry(heavy ? 1.4 : 1.05, 0.035, 0.08),
+      goldMaterial,
+    );
+    trim.position.set(0, heavy ? 0.945 : 0.91, heavy ? -4.12 : -3.88);
+    trim.castShadow = true;
+    trim.receiveShadow = true;
+    this.visual.add(trim);
+  }
+
+  private addSternGlow(): void {
+    const glowMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8fe8df,
+      emissive: 0x36d9cd,
+      emissiveIntensity: 1.6,
+      metalness: 0.3,
+      roughness: 0.28,
+    });
+
+    for (const x of [-0.52, 0.52]) {
+      const engine = new THREE.Mesh(
+        new THREE.BoxGeometry(0.62, 0.12, 0.07),
+        glowMaterial,
+      );
+      engine.position.set(x, 0.53, 4.55);
+      engine.castShadow = false;
+      engine.receiveShadow = false;
+      this.visual.add(engine);
+    }
+  }
+
+  private buildMast(): void {
+    const mastMaterial = new THREE.MeshStandardMaterial({
+      color: 0x33474f,
+      metalness: 0.6,
+      roughness: 0.42,
+    });
+    const flagMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb33a32,
+      metalness: 0.05,
+      roughness: 0.72,
+      side: THREE.DoubleSide,
+    });
+
+    const mast = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.065, 2.55, 8),
+      mastMaterial,
+    );
+    mast.position.set(0, 2.1, 1.18);
+    this.visual.add(mast);
+
+    const crossbeam = new THREE.Mesh(
+      new THREE.BoxGeometry(1.35, 0.055, 0.055),
+      mastMaterial,
+    );
+    crossbeam.position.set(0, 2.86, 1.18);
+    this.visual.add(crossbeam);
+
+    const flag = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.82, 0.46, 4, 2),
+      flagMaterial,
+    );
+    flag.position.set(0.43, 3.08, 1.18);
+    this.visual.add(flag);
+
+    const mastLight = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 10, 8),
+      new THREE.MeshStandardMaterial({
+        color: 0xffdf9a,
+        emissive: 0xffbe52,
+        emissiveIntensity: 1.4,
+        roughness: 0.3,
+      }),
+    );
+    mastLight.position.set(0, 3.4, 1.18);
+    this.visual.add(mastLight);
+  }
+}

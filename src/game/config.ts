@@ -1,0 +1,290 @@
+/**
+ * Single source of truth for gameplay tuning.
+ * Model proportions and purely visual values stay with their model files.
+ */
+
+export type EnemyProfileId = 'raider' | 'gunboat' | 'boss';
+
+export interface EnemyProfile {
+  id: EnemyProfileId;
+  maxHealth: number;
+  armor: number;
+  maxSpeed: number;
+  acceleration: number;
+  turnSpeed: number;
+  preferredRange: number;
+  rangeTolerance: number;
+  attackRange: number;
+  fireInterval: number;
+  projectileSpeed: number;
+  projectileDamage: number;
+  projectileMaxDistance: number;
+  aimTolerance: number;
+  experienceValue: number;
+  hitRadius: number;
+  aimPointHeight: number;
+  sinkDuration: number;
+  visualScale: number;
+  strafeSpeedFactor: number;
+  hullColor: number;
+}
+
+export interface EnemySpawnConfig {
+  profile: EnemyProfileId;
+  x: number;
+  z: number;
+  initialFireDelay: number;
+  strafeDirection: 1 | -1;
+}
+
+export interface DangerStage {
+  tier: number;
+  startsAtSeconds: number;
+  healthMultiplier: number;
+  armorBonus: number;
+  damageMultiplier: number;
+  fireIntervalMultiplier: number;
+  experienceMultiplier: number;
+  targetEnemyCount: number;
+  spawnIntervalSeconds: number;
+}
+
+/**
+ * Bounded danger curve. After the final stage the game stays at the last tier,
+ * preventing unbounded linear scaling during exceptionally long runs.
+ */
+export const DANGER_STAGES: readonly DangerStage[] = [
+  {
+    tier: 1,
+    startsAtSeconds: 0,
+    healthMultiplier: 1,
+    armorBonus: 0,
+    damageMultiplier: 1,
+    fireIntervalMultiplier: 1,
+    experienceMultiplier: 1,
+    targetEnemyCount: 3,
+    spawnIntervalSeconds: 6,
+  },
+  {
+    tier: 2,
+    startsAtSeconds: 12,
+    healthMultiplier: 1.12,
+    armorBonus: 1,
+    damageMultiplier: 1.06,
+    fireIntervalMultiplier: 0.97,
+    experienceMultiplier: 1.08,
+    targetEnemyCount: 3,
+    spawnIntervalSeconds: 5.5,
+  },
+  {
+    tier: 3,
+    startsAtSeconds: 35,
+    healthMultiplier: 1.28,
+    armorBonus: 1,
+    damageMultiplier: 1.13,
+    fireIntervalMultiplier: 0.94,
+    experienceMultiplier: 1.16,
+    targetEnemyCount: 4,
+    spawnIntervalSeconds: 5,
+  },
+  {
+    tier: 4,
+    startsAtSeconds: 65,
+    healthMultiplier: 1.47,
+    armorBonus: 2,
+    damageMultiplier: 1.21,
+    fireIntervalMultiplier: 0.9,
+    experienceMultiplier: 1.26,
+    targetEnemyCount: 4,
+    spawnIntervalSeconds: 4.5,
+  },
+  {
+    tier: 5,
+    startsAtSeconds: 100,
+    healthMultiplier: 1.7,
+    armorBonus: 3,
+    damageMultiplier: 1.3,
+    fireIntervalMultiplier: 0.86,
+    experienceMultiplier: 1.36,
+    targetEnemyCount: 5,
+    spawnIntervalSeconds: 4,
+  },
+  {
+    tier: 6,
+    startsAtSeconds: 140,
+    healthMultiplier: 1.95,
+    armorBonus: 4,
+    damageMultiplier: 1.4,
+    fireIntervalMultiplier: 0.82,
+    experienceMultiplier: 1.48,
+    targetEnemyCount: 5,
+    spawnIntervalSeconds: 3.6,
+  },
+];
+
+export const ENEMY_PROFILES: Record<EnemyProfileId, EnemyProfile> = {
+  raider: {
+    id: 'raider',
+    maxHealth: 110,
+    armor: 0,
+    maxSpeed: 6.5,
+    acceleration: 8,
+    turnSpeed: 1.8,
+    preferredRange: 14,
+    rangeTolerance: 2.5,
+    attackRange: 26,
+    fireInterval: 2.0,
+    projectileSpeed: 26,
+    projectileDamage: 7,
+    projectileMaxDistance: 32,
+    aimTolerance: 0.14,
+    experienceValue: 30,
+    hitRadius: 2.8,
+    aimPointHeight: 1.1,
+    sinkDuration: 1.6,
+    visualScale: 0.92,
+    strafeSpeedFactor: 0.35,
+    hullColor: 0x67272a,
+  },
+  gunboat: {
+    id: 'gunboat',
+    maxHealth: 190,
+    armor: 3,
+    maxSpeed: 4.6,
+    acceleration: 5.5,
+    turnSpeed: 1.2,
+    preferredRange: 19,
+    rangeTolerance: 3,
+    attackRange: 29,
+    fireInterval: 2.6,
+    projectileSpeed: 24,
+    projectileDamage: 12,
+    projectileMaxDistance: 36,
+    aimTolerance: 0.16,
+    experienceValue: 55,
+    hitRadius: 3.1,
+    aimPointHeight: 1.2,
+    sinkDuration: 1.9,
+    visualScale: 1.12,
+    strafeSpeedFactor: 0.28,
+    hullColor: 0x552023,
+  },
+  boss: {
+    id: 'boss',
+    maxHealth: 620,
+    armor: 4,
+    maxSpeed: 3.2,
+    acceleration: 4,
+    turnSpeed: 0.9,
+    preferredRange: 21,
+    rangeTolerance: 3,
+    attackRange: 34,
+    fireInterval: 2.3,
+    projectileSpeed: 24,
+    projectileDamage: 16,
+    projectileMaxDistance: 42,
+    aimTolerance: 0.24,
+    experienceValue: 180,
+    hitRadius: 5.6,
+    aimPointHeight: 1.8,
+    sinkDuration: 2.8,
+    visualScale: 1.8,
+    strafeSpeedFactor: 0.24,
+    hullColor: 0x481b20,
+  },
+};
+
+export const GAME_CONFIG = {
+  arena: {
+    radius: 46,
+  },
+  player: {
+    maxSpeed: 10,
+    acceleration: 26,
+    deceleration: 22,
+    turnSpeed: 4.2,
+    maxHealth: 140,
+    armor: 2,
+    hitRadius: 2.7,
+    aimPointHeight: 1.0,
+  },
+  turret: {
+    turnSpeed: 3.6,
+    aimTolerance: 0.1,
+  },
+  weapon: {
+    range: 29,
+    fireInterval: 0.85,
+    projectileSpeed: 38,
+    projectileDamage: 12,
+    projectileCount: 2,
+    projectileMaxDistance: 38,
+  },
+  pickup: {
+    magnetRadius: 10,
+    collectRadius: 1.7,
+    magnetSpeed: 19,
+    bobHeight: 0.12,
+    orbHeight: 0.9,
+  },
+  progression: {
+    baseExperience: 30,
+    experienceGrowth: 20,
+    upgradeChoiceCount: 3,
+  },
+  evolution: {
+    levels: [2, 3, 4] as const,
+  },
+  spawner: {
+    minSpawnDistance: 20,
+    maxSpawnDistance: 28,
+    initialSpawnTimer: 2.5,
+    raiderWeight: 0.65,
+    initialFireDelayMin: 1.2,
+    initialFireDelayMax: 2.8,
+    eliteBaseChance: 0.12,
+    eliteChancePerTier: 0.06,
+    eliteMaxChance: 0.5,
+    eliteHealthMultiplier: 1.6,
+    eliteArmorBonus: 2,
+    eliteDamageMultiplier: 1.25,
+    eliteExperienceMultiplier: 2,
+    eliteVisualScaleMultiplier: 1.08,
+  },
+  boss: {
+    spawnDangerTier: 2,
+    name: '深海霸主',
+    initialFireDelay: 1.5,
+    specialInitialCooldown: 1.2,
+    specialIntervalSeconds: 6.5,
+    telegraphSeconds: 1.5,
+    blastRadius: 5.5,
+    specialDamage: 24,
+  },
+  enemySpawns: [
+    {
+      profile: 'raider',
+      x: -15,
+      z: -14,
+      initialFireDelay: 1.4,
+      strafeDirection: 1,
+    },
+    {
+      profile: 'raider',
+      x: 15,
+      z: -16,
+      initialFireDelay: 2.0,
+      strafeDirection: -1,
+    },
+    {
+      profile: 'gunboat',
+      x: 0,
+      z: -23,
+      initialFireDelay: 2.6,
+      strafeDirection: 1,
+    },
+  ] satisfies EnemySpawnConfig[],
+  input: {
+    joystickDeadzone: 0.14,
+  },
+} as const;
