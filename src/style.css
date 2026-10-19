@@ -1423,6 +1423,44 @@ body {
   }
 }
 
+@media (pointer: coarse), (max-width: 760px) {
+  .hud__status {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-width: none;
+    animation: none;
+    padding:
+      9px max(16px, env(safe-area-inset-right))
+      calc(9px + env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+    background:
+      linear-gradient(180deg, rgba(9, 35, 47, 0.92), rgba(4, 20, 29, 0.97));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 -12px 34px rgba(0, 8, 13, 0.32);
+  }
+
+  .hud__meta {
+    margin-top: 6px;
+  }
+
+  .joystick {
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    left: max(18px, env(safe-area-inset-left));
+  }
+
+  .hud__hint {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .scene-canvas,
   .hud__brand,
