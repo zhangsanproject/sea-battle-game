@@ -43,7 +43,24 @@ npm test
 - 所有模型、纹理效果与音效均由代码生成；除站点图标外没有外部素材请求。
 - 当前依赖只有运行时 `three`，开发依赖为 `vite`、`typescript`、`@types/three`、`vitest`。
 
-## Cloudflare Pages 部署
+## Cloudflare 部署
+
+### 方式一：Cloudflare Workers 静态资源（本仓库已配置）
+
+仓库包含 `wrangler.jsonc`，将 `dist/` 作为静态资源部署，不需要 `@cloudflare/vite-plugin`。
+
+```bash
+npx wrangler login
+npm run deploy:dry-run
+npm run deploy
+```
+
+- `npm run deploy` 会先执行 `npm run build`，再执行 `wrangler deploy`。
+- `wrangler.jsonc` 已配置 SPA fallback：`not_found_handling: "single-page-application"`。
+- 如果使用 `CLOUDFLARE_API_TOKEN`，可直接在 CI 中执行 `npm run deploy`。
+- 已有 `wrangler.jsonc` 时，Cloudflare 的自动配置流程会跳过向 `vite.config.ts` 注入 Vite 插件的步骤。
+
+### 方式二：Cloudflare Pages
 
 1. 将项目推送到 Git 仓库并连接到 Cloudflare Pages。
 2. 构建命令：`npm run build`
@@ -51,7 +68,17 @@ npm test
 4. Node 版本：`22.12.0` 或更新（仓库提供 `.node-version`；如平台未读取，设置环境变量 `NODE_VERSION=22.12.0`）。
 5. 无需后端、环境变量或 SPA 重写规则；这是一个静态单页应用。
 
-也可以用 Wrangler 直接上传 `dist/`，具体命令以当前 Cloudflare 文档为准。
+两种方式只需选择一种，不要同时启用。
+
+### 关于自动配置报错
+
+Cloudflare 的自动配置尝试向 Vite 配置注入 `@cloudflare/vite-plugin`。当前 `vite.config.ts` 导出的是函数式配置，旧版自动配置器无法解析其 `plugins` 字段，因此报错：
+
+```text
+Cannot modify Vite config: could not find a valid plugins array
+```
+
+本项目的构建产物完全是静态资源，不需要该插件。手动提供 `wrangler.jsonc` 后可直接部署，避免自动改写 Vite 配置。
 
 ## 平台边界
 
