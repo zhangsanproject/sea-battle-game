@@ -61,10 +61,7 @@ export class EnemySpawner {
 
   private spawnNormalEnemy(stage: DangerStage): void {
     const position = this.findSpawnPosition();
-    const baseProfile =
-      this.random() < GAME_CONFIG.spawner.raiderWeight
-        ? ENEMY_PROFILES.raider
-        : ENEMY_PROFILES.gunboat;
+    const baseProfile = this.pickEnemyProfile();
     const eliteChance = Math.min(
       GAME_CONFIG.spawner.eliteMaxChance,
       GAME_CONFIG.spawner.eliteBaseChance +
@@ -121,6 +118,26 @@ export class EnemySpawner {
       1,
       { isBoss: true },
     );
+  }
+
+  private pickEnemyProfile(): EnemyProfile {
+    const weights = GAME_CONFIG.spawner.spawnWeights;
+    let roll = this.random();
+    let selected = weights[weights.length - 1];
+
+    for (const candidate of weights) {
+      roll -= candidate.weight;
+      if (roll <= 0) {
+        selected = candidate;
+        break;
+      }
+    }
+
+    if (!selected) {
+      return ENEMY_PROFILES.raider;
+    }
+
+    return ENEMY_PROFILES[selected.profile];
   }
 
   private applyEliteModifiers(profile: EnemyProfile): EnemyProfile {

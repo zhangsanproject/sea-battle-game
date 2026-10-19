@@ -146,6 +146,7 @@ export class EnemyShip {
     this.visual.scale.setScalar(options.profile.visualScale);
     this.root.add(this.visual);
     this.buildShip();
+    this.buildTypeDetails();
 
     if (this.isElite || this.isBoss) {
       this.buildThreatDetails();
@@ -355,6 +356,113 @@ export class EnemyShip {
     const ratio = Math.max(0, this.health / this.maxHealth);
     this.healthFill.scale.x = ratio;
     this.healthFill.position.x = -HEALTH_BAR_WIDTH * (1 - ratio) * 0.5;
+  }
+
+  private buildTypeDetails(): void {
+    if (this.profile.id === 'destroyer') {
+      this.buildDestroyerDetails();
+    } else if (this.profile.id === 'torpedoBoat') {
+      this.buildTorpedoBoatDetails();
+    }
+  }
+
+  private buildDestroyerDetails(): void {
+    const armorMaterial = new THREE.MeshStandardMaterial({
+      color: 0x242b2e,
+      metalness: 0.66,
+      roughness: 0.4,
+      flatShading: true,
+    });
+    const metalMaterial = new THREE.MeshStandardMaterial({
+      color: 0x374347,
+      metalness: 0.72,
+      roughness: 0.32,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb69558,
+      metalness: 0.72,
+      roughness: 0.3,
+    });
+
+    for (const side of [-1, 1]) {
+      const sideArmor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.32, 2.2),
+        armorMaterial,
+      );
+      sideArmor.position.set(side * 1.65, 0.65, 0.25);
+      sideArmor.castShadow = true;
+      sideArmor.receiveShadow = true;
+      this.visual.add(sideArmor);
+
+      const extraBarrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.07, 1.55, 8),
+        metalMaterial,
+      );
+      extraBarrel.rotation.x = Math.PI / 2;
+      extraBarrel.position.set(side * 0.3, 0.8, -2.48);
+      extraBarrel.castShadow = true;
+      extraBarrel.receiveShadow = true;
+      this.visual.add(extraBarrel);
+    }
+
+    const bridge = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.35, 0.75),
+      armorMaterial,
+    );
+    bridge.position.set(0, 1.4, 2.3);
+    bridge.castShadow = true;
+    bridge.receiveShadow = true;
+    this.visual.add(bridge);
+
+    const mast = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.04, 1.1, 6),
+      metalMaterial,
+    );
+    mast.position.set(0, 2.0, 2.3);
+    mast.castShadow = true;
+    this.visual.add(mast);
+
+    const band = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 0.06, 0.06),
+      goldMaterial,
+    );
+    band.position.set(0, 1.2, 1.58);
+    this.visual.add(band);
+  }
+
+  private buildTorpedoBoatDetails(): void {
+    const tubeMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2b2926,
+      metalness: 0.72,
+      roughness: 0.34,
+    });
+    const bandMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb06a34,
+      emissive: 0x5e240e,
+      emissiveIntensity: 0.5,
+      metalness: 0.45,
+      roughness: 0.4,
+    });
+
+    for (const side of [-1, 1]) {
+      const tube = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.15, 1.15, 8),
+        tubeMaterial,
+      );
+      tube.rotation.x = Math.PI / 2;
+      tube.position.set(side * 1.05, 0.68, 0.35);
+      tube.castShadow = true;
+      tube.receiveShadow = true;
+      this.visual.add(tube);
+
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.155, 0.155, 0.08, 8),
+        bandMaterial,
+      );
+      band.rotation.x = Math.PI / 2;
+      band.position.set(side * 1.05, 0.68, 0.05);
+      this.visual.add(band);
+    }
   }
 
   private buildThreatDetails(): void {

@@ -85,6 +85,50 @@ export class SoundManager {
     oscillator.stop(now + 0.18);
   }
 
+  playSecondary(): void {
+    const context = this.ensurePlayableContext();
+    if (!context || !this.masterGain) {
+      return;
+    }
+
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    oscillator.type = 'square';
+    oscillator.frequency.setValueAtTime(240, now);
+    oscillator.frequency.exponentialRampToValueAtTime(120, now + 0.05);
+    gain.gain.setValueAtTime(0.055, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+    oscillator.connect(gain);
+    gain.connect(this.masterGain);
+    oscillator.start(now);
+    oscillator.stop(now + 0.08);
+  }
+
+  playTorpedo(): void {
+    const context = this.ensurePlayableContext();
+    if (!context || !this.masterGain) {
+      return;
+    }
+
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    oscillator.type = 'sawtooth';
+    oscillator.frequency.setValueAtTime(90, now);
+    oscillator.frequency.exponentialRampToValueAtTime(35, now + 0.3);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+
+    oscillator.connect(gain);
+    gain.connect(this.masterGain);
+    oscillator.start(now);
+    oscillator.stop(now + 0.36);
+  }
+
   playHit(): void {
     const context = this.ensurePlayableContext();
     if (!context || !this.masterGain) {

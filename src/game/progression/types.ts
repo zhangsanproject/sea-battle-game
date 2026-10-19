@@ -7,6 +7,11 @@ export interface CombatStats {
   projectileCount: number;
   weaponRange: number;
   moveSpeed: number;
+  secondaryLevel: number;
+  torpedoLevel: number;
+  experienceMultiplier: number;
+  magnetRadiusBonus: number;
+  repairOnKill: number;
 }
 
 export type UpgradeId =
@@ -15,7 +20,13 @@ export type UpgradeId =
   | 'projectileCount'
   | 'range'
   | 'speed'
-  | 'health';
+  | 'health'
+  | 'secondary'
+  | 'torpedo'
+  | 'armor'
+  | 'repair'
+  | 'magnet'
+  | 'experience';
 
 export interface UpgradeContext {
   stats: CombatStats;
@@ -47,5 +58,10 @@ export function createCombatStats(): CombatStats {
     projectileCount: GAME_CONFIG.weapon.projectileCount,
     weaponRange: GAME_CONFIG.weapon.range,
     moveSpeed: GAME_CONFIG.player.maxSpeed,
+    secondaryLevel: GAME_CONFIG.playerWeapons.secondary.initialLevel,
+    torpedoLevel: GAME_CONFIG.playerWeapons.torpedo.initialLevel,
+    experienceMultiplier: 1,
+    magnetRadiusBonus: 0,
+    repairOnKill: 0,
   };
 }

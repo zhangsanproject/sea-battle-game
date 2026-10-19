@@ -3,7 +3,14 @@
  * Model proportions and purely visual values stay with their model files.
  */
 
-export type EnemyProfileId = 'raider' | 'gunboat' | 'boss';
+export type EnemyProfileId =
+  | 'raider'
+  | 'gunboat'
+  | 'destroyer'
+  | 'torpedoBoat'
+  | 'boss';
+
+export type ProjectileKind = 'shell' | 'secondary' | 'torpedo';
 
 export interface EnemyProfile {
   id: EnemyProfileId;
@@ -18,6 +25,9 @@ export interface EnemyProfile {
   fireInterval: number;
   projectileSpeed: number;
   projectileDamage: number;
+  projectileCount: number;
+  spreadRadians: number;
+  projectileKind: ProjectileKind;
   projectileMaxDistance: number;
   aimTolerance: number;
   experienceValue: number;
@@ -136,6 +146,9 @@ export const ENEMY_PROFILES: Record<EnemyProfileId, EnemyProfile> = {
     fireInterval: 2.0,
     projectileSpeed: 26,
     projectileDamage: 7,
+    projectileCount: 1,
+    spreadRadians: 0,
+    projectileKind: 'shell',
     projectileMaxDistance: 32,
     aimTolerance: 0.14,
     experienceValue: 30,
@@ -159,6 +172,9 @@ export const ENEMY_PROFILES: Record<EnemyProfileId, EnemyProfile> = {
     fireInterval: 2.6,
     projectileSpeed: 24,
     projectileDamage: 12,
+    projectileCount: 1,
+    spreadRadians: 0,
+    projectileKind: 'shell',
     projectileMaxDistance: 36,
     aimTolerance: 0.16,
     experienceValue: 55,
@@ -168,6 +184,58 @@ export const ENEMY_PROFILES: Record<EnemyProfileId, EnemyProfile> = {
     visualScale: 1.12,
     strafeSpeedFactor: 0.28,
     hullColor: 0x552023,
+  },
+  destroyer: {
+    id: 'destroyer',
+    maxHealth: 300,
+    armor: 6,
+    maxSpeed: 3.6,
+    acceleration: 4.5,
+    turnSpeed: 0.9,
+    preferredRange: 22,
+    rangeTolerance: 3,
+    attackRange: 33,
+    fireInterval: 3,
+    projectileSpeed: 27,
+    projectileDamage: 14,
+    projectileCount: 3,
+    spreadRadians: 0.05,
+    projectileKind: 'shell',
+    projectileMaxDistance: 38,
+    aimTolerance: 0.2,
+    experienceValue: 85,
+    hitRadius: 3.6,
+    aimPointHeight: 1.4,
+    sinkDuration: 2.1,
+    visualScale: 1.3,
+    strafeSpeedFactor: 0.22,
+    hullColor: 0x43312f,
+  },
+  torpedoBoat: {
+    id: 'torpedoBoat',
+    maxHealth: 140,
+    armor: 1,
+    maxSpeed: 9,
+    acceleration: 13,
+    turnSpeed: 2.6,
+    preferredRange: 11,
+    rangeTolerance: 2,
+    attackRange: 22,
+    fireInterval: 3.5,
+    projectileSpeed: 17,
+    projectileDamage: 20,
+    projectileCount: 1,
+    spreadRadians: 0,
+    projectileKind: 'torpedo',
+    projectileMaxDistance: 30,
+    aimTolerance: 0.18,
+    experienceValue: 65,
+    hitRadius: 2.5,
+    aimPointHeight: 1,
+    sinkDuration: 1.5,
+    visualScale: 0.9,
+    strafeSpeedFactor: 0.6,
+    hullColor: 0x6b3b22,
   },
   boss: {
     id: 'boss',
@@ -182,6 +250,9 @@ export const ENEMY_PROFILES: Record<EnemyProfileId, EnemyProfile> = {
     fireInterval: 2.3,
     projectileSpeed: 24,
     projectileDamage: 16,
+    projectileCount: 2,
+    spreadRadians: 0.045,
+    projectileKind: 'shell',
     projectileMaxDistance: 42,
     aimTolerance: 0.24,
     experienceValue: 180,
@@ -235,11 +306,40 @@ export const GAME_CONFIG = {
   evolution: {
     levels: [2, 3, 4] as const,
   },
+  playerWeapons: {
+    secondary: {
+      initialLevel: 1,
+      baseDamageFactor: 0.36,
+      damagePerLevel: 1.5,
+      baseFireInterval: 0.52,
+      fireIntervalPerLevel: 0.06,
+      minFireInterval: 0.2,
+      baseRange: 23,
+      rangePerLevel: 2,
+      aimTolerance: 0.18,
+      turretTurnSpeed: 4.2,
+    },
+    torpedo: {
+      initialLevel: 1,
+      baseDamage: 46,
+      damagePerLevel: 18,
+      baseFireInterval: 3.2,
+      fireIntervalPerLevel: 0.35,
+      range: 30,
+      projectileSpeed: 16,
+      projectileMaxDistance: 38,
+    },
+  },
   spawner: {
     minSpawnDistance: 20,
     maxSpawnDistance: 28,
     initialSpawnTimer: 2.5,
-    raiderWeight: 0.65,
+    spawnWeights: [
+      { profile: 'raider', weight: 0.4 },
+      { profile: 'gunboat', weight: 0.24 },
+      { profile: 'torpedoBoat', weight: 0.21 },
+      { profile: 'destroyer', weight: 0.15 },
+    ],
     initialFireDelayMin: 1.2,
     initialFireDelayMax: 2.8,
     eliteBaseChance: 0.12,
@@ -270,7 +370,7 @@ export const GAME_CONFIG = {
       strafeDirection: 1,
     },
     {
-      profile: 'raider',
+      profile: 'torpedoBoat',
       x: 15,
       z: -16,
       initialFireDelay: 2.0,

@@ -21,7 +21,9 @@ import { EnemySpawner } from './systems/EnemySpawner';
 import { PickupSystem } from './systems/PickupSystem';
 import { PlayerControlSystem } from './systems/PlayerControlSystem';
 import { ProjectileSystem } from './systems/ProjectileSystem';
+import { SecondaryWeaponSystem } from './systems/SecondaryWeaponSystem';
 import { TargetingSystem } from './systems/TargetingSystem';
+import { TorpedoSystem } from './systems/TorpedoSystem';
 import { WeaponSystem } from './systems/WeaponSystem';
 
 type GamePhase = 'playing' | 'upgrade' | 'gameover';
@@ -41,6 +43,8 @@ export class Game {
   private readonly playerControl: PlayerControlSystem;
   private readonly enemyAI: EnemyAISystem;
   private readonly weaponSystem: WeaponSystem;
+  private readonly secondaryWeaponSystem: SecondaryWeaponSystem;
+  private readonly torpedoSystem: TorpedoSystem;
   private readonly progression: ProgressionSystem;
   private readonly hud: HUD;
   private readonly loop: GameLoop;
@@ -80,6 +84,12 @@ export class Game {
     this.sceneManager.add(this.playerShip.root, this.enemyManager.root);
 
     this.progression = new ProgressionSystem(this.playerShip);
+    this.playerShip.setSecondaryWeaponLevel(
+      this.progression.combatStats.secondaryLevel,
+    );
+    this.playerShip.setTorpedoWeaponLevel(
+      this.progression.combatStats.torpedoLevel,
+    );
 
     this.hud = new HUD(uiRoot, this.handleRestartRequest, {
       enabled: this.sound.isEnabled,
@@ -151,6 +161,22 @@ export class Game {
       this.projectileSystem,
       this.progression.combatStats,
       () => this.sound.playCannon(),
+    );
+    this.secondaryWeaponSystem = new SecondaryWeaponSystem(
+      this.playerShip,
+      this.enemyManager,
+      targeting,
+      this.projectileSystem,
+      this.progression.combatStats,
+      () => this.sound.playSecondary(),
+    );
+    this.torpedoSystem = new TorpedoSystem(
+      this.playerShip,
+      this.enemyManager,
+      targeting,
+      this.projectileSystem,
+      this.progression.combatStats,
+      () => this.sound.playTorpedo(),
     );
 
     this.loop = new GameLoop({
@@ -235,6 +261,8 @@ export class Game {
     }
 
     this.weaponSystem.update(deltaTime);
+    this.secondaryWeaponSystem.update(deltaTime);
+    this.torpedoSystem.update(deltaTime);
     this.projectileSystem.update(deltaTime);
 
     if (this.phase !== 'playing') {
@@ -243,7 +271,12 @@ export class Game {
 
     this.effectSystem.update(deltaTime);
     this.syncBossHud();
-    this.pickupSystem.update(deltaTime, elapsedTime, this.playerShip);
+    this.pickupSystem.update(
+      deltaTime,
+      elapsedTime,
+      this.playerShip,
+      this.progression.combatStats.magnetRadiusBonus,
+    );
     this.playerShip.updateVisual(elapsedTime, deltaTime);
   }
 
@@ -259,6 +292,14 @@ export class Game {
       enemy.isBoss ? 2.4 : enemy.isElite ? 1.35 : 1,
     );
     this.sound.playExplosion();
+
+    const repair = this.progression.combatStats.repairOnKill;
+    if (repair > 0 && !this.playerShip.isDestroyed) {
+      const healed = this.playerShip.heal(repair);
+      if (healed > 0) {
+        this.hud.update(this.playerShip.status);
+      }
+    }
 
     if (enemy.isBoss) {
       this.bossKills += 1;
@@ -306,7 +347,14 @@ export class Game {
       return;
     }
 
-    const gainedLevels = this.progression.addExperience(value);
+    const gainedExperience = Math.max(
+      1,
+      Math.round(
+        value * this.progression.combatStats.experienceMultiplier,
+      ),
+    );
+    const gainedLevels =
+      this.progression.addExperience(gainedExperience);
     this.hud.setExperience(
       this.progression.currentExperience,
       this.progression.experienceRequired,
@@ -351,6 +399,12 @@ export class Game {
       return;
     }
 
+    this.playerShip.setSecondaryWeaponLevel(
+      this.progression.combatStats.secondaryLevel,
+    );
+    this.playerShip.setTorpedoWeaponLevel(
+      this.progression.combatStats.torpedoLevel,
+    );
     this.hud.update(this.playerShip.status);
     this.hud.setExperience(
       this.progression.currentExperience,

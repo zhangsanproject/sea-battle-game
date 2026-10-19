@@ -84,12 +84,11 @@ describe('ProgressionSystem', () => {
       throw new Error('Expected an upgrade offer');
     }
 
-    const beforeDamage = progression.combatStats.weaponDamage;
-    const beforeInterval = progression.combatStats.fireInterval;
-    const beforeProjectiles = progression.combatStats.projectileCount;
-    const beforeRange = progression.combatStats.weaponRange;
-    const beforeSpeed = progression.combatStats.moveSpeed;
-    const beforeMaxHealth = player.status.maxHealth;
+    const before = {
+      ...progression.combatStats,
+      maxHealth: player.status.maxHealth,
+      armor: player.armor,
+    };
 
     expect(progression.applyUpgrade(chosen.id)).toBe(true);
     expect(progression.hasPendingLevelUp).toBe(false);
@@ -97,12 +96,18 @@ describe('ProgressionSystem', () => {
 
     const stats = progression.combatStats;
     const changed =
-      stats.weaponDamage !== beforeDamage ||
-      stats.fireInterval !== beforeInterval ||
-      stats.projectileCount !== beforeProjectiles ||
-      stats.weaponRange !== beforeRange ||
-      stats.moveSpeed !== beforeSpeed ||
-      player.status.maxHealth !== beforeMaxHealth;
+      stats.weaponDamage !== before.weaponDamage ||
+      stats.fireInterval !== before.fireInterval ||
+      stats.projectileCount !== before.projectileCount ||
+      stats.weaponRange !== before.weaponRange ||
+      stats.moveSpeed !== before.moveSpeed ||
+      stats.secondaryLevel !== before.secondaryLevel ||
+      stats.torpedoLevel !== before.torpedoLevel ||
+      stats.experienceMultiplier !== before.experienceMultiplier ||
+      stats.magnetRadiusBonus !== before.magnetRadiusBonus ||
+      stats.repairOnKill !== before.repairOnKill ||
+      player.status.maxHealth !== before.maxHealth ||
+      player.armor !== before.armor;
 
     expect(changed).toBe(true);
     expect(progression.getUpgradeLevel(chosen.id)).toBe(1);
@@ -137,6 +142,7 @@ describe('ProgressionSystem', () => {
       const before = { ...stats };
       const beforeHealth = player.status.health;
       const beforeMaxHealth = player.status.maxHealth;
+      const beforeArmor = player.armor;
 
       definition.apply({ stats, player });
 
@@ -161,6 +167,30 @@ describe('ProgressionSystem', () => {
         case 'health':
           expect(player.status.maxHealth).toBeGreaterThan(beforeMaxHealth);
           expect(player.status.health).toBeGreaterThanOrEqual(beforeHealth);
+          break;
+        case 'secondary':
+          expect(stats.secondaryLevel).toBeGreaterThan(
+            before.secondaryLevel,
+          );
+          break;
+        case 'torpedo':
+          expect(stats.torpedoLevel).toBeGreaterThan(before.torpedoLevel);
+          break;
+        case 'armor':
+          expect(player.armor).toBeGreaterThan(beforeArmor);
+          break;
+        case 'repair':
+          expect(stats.repairOnKill).toBeGreaterThan(before.repairOnKill);
+          break;
+        case 'magnet':
+          expect(stats.magnetRadiusBonus).toBeGreaterThan(
+            before.magnetRadiusBonus,
+          );
+          break;
+        case 'experience':
+          expect(stats.experienceMultiplier).toBeGreaterThan(
+            before.experienceMultiplier,
+          );
           break;
       }
 

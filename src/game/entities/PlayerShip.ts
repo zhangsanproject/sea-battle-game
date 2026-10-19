@@ -113,10 +113,20 @@ export class PlayerShip {
     maxHealth: GAME_CONFIG.player.maxHealth,
     level: 1,
   };
+  armor = GAME_CONFIG.player.armor;
 
   private readonly visual = new THREE.Group();
   private readonly gun = new THREE.Group();
   private readonly muzzleMarkers: THREE.Object3D[] = [];
+  private readonly secondaryGroup = new THREE.Group();
+  private readonly secondaryTurrets: Array<{
+    pivot: THREE.Group;
+    muzzle: THREE.Object3D;
+  }> = [];
+  private readonly torpedoGroup = new THREE.Group();
+  private readonly torpedoMuzzles: THREE.Object3D[] = [];
+  private secondaryWeaponsBuilt = false;
+  private torpedoWeaponsBuilt = false;
   private readonly muzzleFlashes: THREE.Mesh[] = [];
   private readonly muzzleFlashMaterial = new THREE.MeshBasicMaterial({
     color: 0xffcf7a,
@@ -231,6 +241,105 @@ export class PlayerShip {
     );
   }
 
+  setSecondaryWeaponLevel(level: number): void {
+    if (level > 0 && !this.secondaryWeaponsBuilt) {
+      this.buildSecondaryWeaponTurrets();
+      this.secondaryWeaponsBuilt = true;
+    }
+
+    this.secondaryGroup.visible = level > 0;
+  }
+
+  aimSecondaryWeaponsAt(
+    worldTarget: THREE.Vector3,
+    deltaTime: number,
+  ): boolean {
+    if (this.secondaryTurrets.length === 0) {
+      return false;
+    }
+
+    const deltaX = worldTarget.x - this.root.position.x;
+    const deltaZ = worldTarget.z - this.root.position.z;
+    const desiredWorldYaw = Math.atan2(-deltaX, -deltaZ);
+    const desiredLocalYaw = normalizeAngle(
+      desiredWorldYaw - this.root.rotation.y,
+    );
+    let aligned = true;
+
+    for (const turret of this.secondaryTurrets) {
+      turret.pivot.rotation.y = rotateTowardsAngle(
+        turret.pivot.rotation.y,
+        desiredLocalYaw,
+        GAME_CONFIG.playerWeapons.secondary.turretTurnSpeed *
+          deltaTime,
+      );
+
+      if (
+        Math.abs(
+          normalizeAngle(desiredLocalYaw - turret.pivot.rotation.y),
+        ) > GAME_CONFIG.playerWeapons.secondary.aimTolerance
+      ) {
+        aligned = false;
+      }
+    }
+
+    return aligned;
+  }
+
+  getSecondaryMuzzleWorldPositions(out: THREE.Vector3[]): number {
+    this.root.updateMatrixWorld(true);
+
+    let count = 0;
+    for (const turret of this.secondaryTurrets) {
+      const target = out[count];
+      if (!target) {
+        break;
+      }
+      turret.muzzle.getWorldPosition(target);
+      count += 1;
+    }
+
+    return count;
+  }
+
+  setTorpedoWeaponLevel(level: number): void {
+    if (level > 0 && !this.torpedoWeaponsBuilt) {
+      this.buildTorpedoLaunchers();
+      this.torpedoWeaponsBuilt = true;
+    }
+
+    this.torpedoGroup.visible = level > 0;
+  }
+
+  getTorpedoMuzzleWorldPositions(out: THREE.Vector3[]): number {
+    this.root.updateMatrixWorld(true);
+
+    let count = 0;
+    for (const muzzle of this.torpedoMuzzles) {
+      const target = out[count];
+      if (!target) {
+        break;
+      }
+      muzzle.getWorldPosition(target);
+      count += 1;
+    }
+
+    return count;
+  }
+
+  heal(amount: number): number {
+    if (amount <= 0 || this.status.health <= 0) {
+      return 0;
+    }
+
+    const previousHealth = this.status.health;
+    this.status.health = Math.min(
+      this.status.maxHealth,
+      this.status.health + amount,
+    );
+    return this.status.health - previousHealth;
+  }
+
   get evolutionStage(): number {
     return this.evolutionTier;
   }
@@ -272,10 +381,7 @@ export class PlayerShip {
       return 0;
     }
 
-    const damage = Math.max(
-      1,
-      Math.round(rawDamage - GAME_CONFIG.player.armor),
-    );
+    const damage = Math.max(1, Math.round(rawDamage - this.armor));
     const appliedDamage = Math.min(this.status.health, damage);
     this.status.health -= appliedDamage;
     return appliedDamage;
@@ -290,6 +396,8 @@ export class PlayerShip {
     this.root.clear();
     this.muzzleMarkers.length = 0;
     this.muzzleFlashes.length = 0;
+    this.secondaryTurrets.length = 0;
+    this.torpedoMuzzles.length = 0;
   }
 
   private buildHull(): void {
@@ -665,7 +773,6 @@ export class PlayerShip {
     }
 
     if (stage === 3) {
-      this.addSideTurrets();
       this.addBowArmor(false);
       return;
     }
@@ -752,9 +859,8 @@ export class PlayerShip {
     this.muzzleFlashes.push(flash);
   }
 
-  private addSideTurrets(): void {
-    const group = new THREE.Group();
-    group.name = 'EvolutionSideTurrets';
+  private buildSecondaryWeaponTurrets(): void {
+    this.secondaryGroup.name = 'SecondaryWeaponTurrets';
     const metalMaterial = new THREE.MeshStandardMaterial({
       color: DARK_METAL_COLOR,
       metalness: 0.72,
@@ -790,31 +896,89 @@ export class PlayerShip {
       ring.position.y = 0.14;
       mount.add(ring);
 
+      const pivot = new THREE.Group();
+      pivot.position.y = 0.25;
+
       const turret = new THREE.Mesh(
         new THREE.CylinderGeometry(0.24, 0.31, 0.2, 6),
         turretMaterial,
       );
-      turret.position.y = 0.25;
-      mount.add(turret);
+      pivot.add(turret);
 
       const barrel = new THREE.Mesh(
         new THREE.CylinderGeometry(0.04, 0.055, 0.95, 8),
         metalMaterial,
       );
       barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.27, -0.5);
-      mount.add(barrel);
+      barrel.position.set(0, 0.02, -0.5);
+      pivot.add(barrel);
 
-      group.add(mount);
+      const muzzle = new THREE.Object3D();
+      muzzle.position.set(0, 0.02, -0.99);
+      pivot.add(muzzle);
+
+      mount.add(pivot);
+      this.secondaryGroup.add(mount);
+      this.secondaryTurrets.push({ pivot, muzzle });
     }
 
-    group.traverse((object) => {
+    this.secondaryGroup.traverse((object) => {
       if (object instanceof THREE.Mesh) {
         object.castShadow = true;
         object.receiveShadow = true;
       }
     });
-    this.visual.add(group);
+    this.visual.add(this.secondaryGroup);
+  }
+
+  private buildTorpedoLaunchers(): void {
+    this.torpedoGroup.name = 'TorpedoLaunchers';
+    const metalMaterial = new THREE.MeshStandardMaterial({
+      color: 0x26343a,
+      metalness: 0.72,
+      roughness: 0.34,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.7,
+      roughness: 0.3,
+    });
+
+    for (const side of [-1, 1]) {
+      const launcher = new THREE.Group();
+      launcher.position.set(side * 1.18, 0.86, 0.82);
+
+      const tube = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.14, 0.17, 1.1, 10),
+        metalMaterial,
+      );
+      tube.rotation.x = Math.PI / 2;
+      tube.position.set(0, 0, -0.3);
+      launcher.add(tube);
+
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.18, 0.07, 10),
+        goldMaterial,
+      );
+      band.rotation.x = Math.PI / 2;
+      band.position.set(0, 0, -0.62);
+      launcher.add(band);
+
+      const muzzle = new THREE.Object3D();
+      muzzle.position.set(0, 0, -0.88);
+      launcher.add(muzzle);
+
+      this.torpedoGroup.add(launcher);
+      this.torpedoMuzzles.push(muzzle);
+    }
+
+    this.torpedoGroup.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    this.visual.add(this.torpedoGroup);
   }
 
   private addBowArmor(heavy: boolean): void {

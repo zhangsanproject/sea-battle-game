@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GAME_CONFIG } from '../config';
+import { GAME_CONFIG, type ProjectileKind } from '../config';
 import type { EnemyShip } from '../entities/EnemyShip';
 import type { PlayerShip } from '../entities/PlayerShip';
 import type { EnemyManager } from './EnemyManager';
@@ -15,6 +15,7 @@ export interface ProjectileFireOptions {
   speed: number;
   damage: number;
   maxDistance: number;
+  kind?: ProjectileKind;
 }
 
 export interface ProjectileSystemOptions {
@@ -45,6 +46,8 @@ export class ProjectileSystem {
   private readonly geometry: THREE.CylinderGeometry;
   private readonly playerMaterial: THREE.MeshStandardMaterial;
   private readonly enemyMaterial: THREE.MeshStandardMaterial;
+  private readonly torpedoMaterial: THREE.MeshStandardMaterial;
+  private readonly enemyTorpedoMaterial: THREE.MeshStandardMaterial;
   private readonly enemies: EnemyManager;
   private readonly player: PlayerShip;
   private readonly onEnemyKilled: (enemy: EnemyShip) => void;
@@ -76,6 +79,20 @@ export class ProjectileSystem {
       emissiveIntensity: 2.1,
       metalness: 0.25,
       roughness: 0.3,
+    });
+    this.torpedoMaterial = new THREE.MeshStandardMaterial({
+      color: 0xfff0c2,
+      emissive: 0xff9b3a,
+      emissiveIntensity: 2.4,
+      metalness: 0.4,
+      roughness: 0.22,
+    });
+    this.enemyTorpedoMaterial = new THREE.MeshStandardMaterial({
+      color: 0xff7454,
+      emissive: 0xff2a12,
+      emissiveIntensity: 2.5,
+      metalness: 0.35,
+      roughness: 0.25,
     });
 
     for (let index = 0; index < PROJECTILE_POOL_SIZE; index += 1) {
@@ -128,9 +145,20 @@ export class ProjectileSystem {
       return;
     }
 
+    const kind = options.kind ?? 'shell';
+
     slot.mesh.position.copy(origin);
     slot.mesh.material =
-      options.owner === 'player' ? this.playerMaterial : this.enemyMaterial;
+      kind === 'torpedo'
+        ? options.owner === 'player'
+          ? this.torpedoMaterial
+          : this.enemyTorpedoMaterial
+        : options.owner === 'player'
+          ? this.playerMaterial
+          : this.enemyMaterial;
+    slot.mesh.scale.setScalar(
+      kind === 'torpedo' ? 1.9 : kind === 'secondary' ? 0.58 : 1,
+    );
     slot.mesh.quaternion.setFromUnitVectors(WORLD_UP, this.direction);
     slot.mesh.visible = true;
     slot.velocity.copy(this.direction).multiplyScalar(options.speed);
@@ -191,6 +219,8 @@ export class ProjectileSystem {
     this.geometry.dispose();
     this.playerMaterial.dispose();
     this.enemyMaterial.dispose();
+    this.torpedoMaterial.dispose();
+    this.enemyTorpedoMaterial.dispose();
     this.slots.length = 0;
   }
 

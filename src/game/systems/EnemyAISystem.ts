@@ -1,5 +1,6 @@
 import { Vector2, Vector3 } from 'three';
 import { GAME_CONFIG } from '../config';
+import type { EnemyShip } from '../entities/EnemyShip';
 import type { PlayerShip } from '../entities/PlayerShip';
 import type { EnemyManager } from './EnemyManager';
 import type { ProjectileSystem } from './ProjectileSystem';
@@ -8,6 +9,9 @@ import { clampToArena, moveTowards, normalizeAngle, rotateTowardsAngle } from '.
 export class EnemyAISystem {
   private readonly playerAimPoint = new Vector3();
   private readonly muzzlePosition = new Vector3();
+  private readonly volleyDirection = new Vector3();
+  private readonly volleyPerpendicular = new Vector3();
+  private readonly volleyTarget = new Vector3();
   private readonly position2D = new Vector2();
 
   constructor(
@@ -96,14 +100,51 @@ export class EnemyAISystem {
       }
 
       enemy.getMuzzleWorldPosition(this.muzzlePosition);
-      this.projectiles.fire(this.muzzlePosition, this.playerAimPoint, {
+      this.fireEnemyVolley(enemy);
+      enemy.resetFireCooldown();
+      enemy.triggerMuzzleFlash();
+    }
+  }
+
+  private fireEnemyVolley(enemy: EnemyShip): void {
+    const count = Math.max(1, Math.round(enemy.profile.projectileCount));
+
+    this.volleyDirection.subVectors(
+      this.playerAimPoint,
+      this.muzzlePosition,
+    );
+    this.volleyDirection.y = 0;
+    const horizontalDistance = this.volleyDirection.length();
+
+    if (horizontalDistance > 0.0001) {
+      this.volleyDirection.multiplyScalar(1 / horizontalDistance);
+      this.volleyPerpendicular.set(
+        -this.volleyDirection.z,
+        0,
+        this.volleyDirection.x,
+      );
+    } else {
+      this.volleyPerpendicular.set(1, 0, 0);
+    }
+
+    for (let index = 0; index < count; index += 1) {
+      const centeredIndex = index - (count - 1) * 0.5;
+      this.volleyTarget
+        .copy(this.playerAimPoint)
+        .addScaledVector(
+          this.volleyPerpendicular,
+          centeredIndex *
+            enemy.profile.spreadRadians *
+            horizontalDistance,
+        );
+
+      this.projectiles.fire(this.muzzlePosition, this.volleyTarget, {
         owner: 'enemy',
         speed: enemy.profile.projectileSpeed,
         damage: enemy.profile.projectileDamage,
         maxDistance: enemy.profile.projectileMaxDistance,
+        kind: enemy.profile.projectileKind,
       });
-      enemy.resetFireCooldown();
-      enemy.triggerMuzzleFlash();
     }
   }
 }

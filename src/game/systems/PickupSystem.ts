@@ -100,6 +100,7 @@ export class PickupSystem {
     deltaTime: number,
     elapsedTime: number,
     player: PlayerShip,
+    magnetRadiusBonus = 0,
   ): void {
     if (this.disposed) {
       return;
@@ -108,8 +109,9 @@ export class PickupSystem {
     player.getAimPoint(this.targetPoint);
     const collectRadiusSq =
       GAME_CONFIG.pickup.collectRadius * GAME_CONFIG.pickup.collectRadius;
-    const magnetRadiusSq =
-      GAME_CONFIG.pickup.magnetRadius * GAME_CONFIG.pickup.magnetRadius;
+    const magnetRadius =
+      GAME_CONFIG.pickup.magnetRadius + Math.max(0, magnetRadiusBonus);
+    const magnetRadiusSq = magnetRadius * magnetRadius;
 
     for (const slot of this.slots) {
       if (!slot.active) {

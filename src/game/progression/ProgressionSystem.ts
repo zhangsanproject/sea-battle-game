@@ -51,6 +51,12 @@ export class ProgressionSystem {
     range: 0,
     speed: 0,
     health: 0,
+    secondary: 0,
+    torpedo: 0,
+    armor: 0,
+    repair: 0,
+    magnet: 0,
+    experience: 0,
   };
 
   private currentOffers: UpgradeOffer[] = [];

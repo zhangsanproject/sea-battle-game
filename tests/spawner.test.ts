@@ -61,6 +61,41 @@ describe('EnemySpawner', () => {
     player.dispose();
   });
 
+  it('can spawn the new destroyer ship type', () => {
+    const player = new PlayerShip();
+    const enemies = new EnemyManager();
+    const danger = new DangerSystem();
+    const spawner = new EnemySpawner(
+      enemies,
+      player,
+      danger,
+      () => 0.9,
+    );
+    const camera = new PerspectiveCamera();
+    camera.position.set(0, 18, 24);
+
+    const victim = enemies.getEnemies()[0];
+    if (!victim) {
+      throw new Error('Expected an initial enemy');
+    }
+    victim.takeDamage(999999);
+    enemies.update(3, 0, camera);
+
+    spawner.update(7, danger.getStage(0));
+
+    const activeEnemies = enemies.getEnemies();
+    const spawned = activeEnemies[activeEnemies.length - 1];
+    if (!spawned) {
+      throw new Error('Expected a spawned enemy');
+    }
+
+    expect(spawned.profile.id).toBe('destroyer');
+    expect(spawned.isElite).toBe(false);
+
+    enemies.dispose();
+    player.dispose();
+  });
+
   it('spawns a scaled boss and pauses normal reinforcements', () => {
     const player = new PlayerShip();
     const enemies = new EnemyManager();
