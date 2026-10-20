@@ -1,0 +1,10 @@
+{
+  "appid": "tt0000000000000000",
+  "projectname": "sea-battle-game",
+  "compileType": "game",
+  "setting": {
+    "es6": true,
+    "minified": true,
+    "urlCheck": false
+  }
+}

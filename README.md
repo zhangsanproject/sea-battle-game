@@ -163,8 +163,9 @@ npm test
 
 ## 构建产物
 
-- 构建命令：`npm run build`
-- 输出目录：`dist/`
+- 网页版构建：`npm run build`，输出 `dist/`。
+- 小游戏构建：`npm run build:minigame`，输出 `minigame-dist/`（`game.js` + `game.json` + `project.config.json`）。
+- 小游戏产物冒烟检查：`npm run smoke:minigame`；构建 + 冒烟 + 测试一条命令：`npm run verify:minigame`。
 - 生产资源使用相对路径（`base: './'`），适配 Cloudflare Pages 根目录和子目录部署。
 - 所有模型、纹理效果与音效均由代码生成；除站点图标外没有外部素材请求。
 - 当前依赖只有运行时 `three`，开发依赖为 `vite`、`typescript`、`@types/three`、`vitest`。
@@ -220,31 +221,50 @@ Cannot modify Vite config: could not find a valid plugins array
 
 游戏逻辑不再直接读写浏览器存储或页面可见性。
 
-## 抖音小游戏兼容性评估
+## 抖音小游戏版本
 
-**当前网页版本不能直接视为抖音小游戏版本。** 尚未在抖音开发者工具或真机上运行，不能宣称兼容。
+网页版与抖音小游戏版**共用同一套游戏逻辑，各用独立入口**。网页版入口（`index.html` + `src/main.ts`）不变，小游戏版新增在 `src/minigame/` 下，两者互不引用。
 
-当前网页实现依赖以下浏览器能力：
+| 项目 | 网页版 | 抖音小游戏版 |
+| --- | --- | --- |
+| 入口 | `index.html` + `src/main.ts` | `src/minigame/main.ts` |
+| 构建 | `npm run build` → `dist/` | `npm run build:minigame` → `minigame-dist/` |
+| 渲染载体 | DOM + CSS HUD | 一块屏幕画布 + 2D 合成 HUD |
+| 输入 | Pointer Events / 键盘 | `tt.onTouchStart` 等触摸事件 |
+| 存储 | `localStorage` | `tt.setStorageSync` |
+| 暂停恢复 | `visibilitychange` | `tt.onShow` / `tt.onHide` |
+| 声音 | Web Audio | `tt.createWebAudioContext`，不可用时静默 |
 
-- HTML/CSS DOM 与 `ResizeObserver` 渲染 HUD。
-- Pointer Events、`window`/`document` 生命周期。
-- `localStorage`。
-- Web Audio API。
-- Vite 的 HTML 入口和 ES Module 产物。
+小游戏版通过 `PlatformAdapter` 接入，`src/game/` 里没有任何平台判断：
 
-迁移到抖音小游戏时至少需要：
+- `src/minigame/main.ts`：创建屏幕画布与离屏 WebGL 画布，每帧把 3D 画面合成到 2D HUD 下方。
+- `src/minigame/MiniGameUi.ts`：Canvas HUD、虚拟摇杆、升级卡片与结算面板，实现与网页 HUD 相同的 `GameHud` 接口。
+- `src/platform/MiniGamePlatform.ts`：`tt` 存储、生命周期与输入注入。
+- `src/minigame/runtime.ts`：只声明本项目用到的 `tt` 接口，网页构建不依赖小游戏类型。
 
-1. 将 Vite 产物改造成小游戏入口/适配层，确认是否支持当前 ES2020 产物。
-2. 使用平台 Canvas 创建 WebGL 上下文，验证 Three.js 与当前着色器。
-3. 用 Canvas 或平台 UI 替换 HTML HUD、升级面板、结算面板和虚拟摇杆。
-4. 用平台触摸事件实现 `InputSource`，验证多指触摸和坐标系。
-5. 用平台 `onShow/onHide` 实现暂停恢复，处理音频解锁。
-6. 用平台存储 API 实现 `KeyValueStorage`。
-7. 验证音频 API；若不可用，需要无声降级而非报错。
-8. 验证分包/包体限制、首包大小、资源路径和网络域名策略。
-9. 在抖音开发者工具和真机测试帧率、触控、屏幕适配、前后台切换和重开稳定性。
+### 已验证 / 未验证
 
-目前没有抖音真机或开发者工具测试结果。
+已验证（本机可复现）：
+
+- `npm run build:minigame` 通过，产物 `minigame-dist/game.js` 约 695 KB（gzip 179 KB），并复制 `game.json`、`project.config.json`。
+- 产物在无 DOM、无 WebGL 的模拟运行时（`npm run smoke:minigame`）中能加载：创建两块画布、注册四个触摸回调与 `onShow/onHide`、读取屏幕信息；WebGL 不可用时画出错误提示页，而不是白屏。
+- 16 个测试文件、81 个用例通过，其中 `tests/minigameUi.test.ts`、`tests/minigamePlatform.test.ts` 覆盖摇杆死区与边界、选卡、结算重开、音效按钮、存储回退、暂停恢复。
+
+未验证（不要当成已兼容）：
+
+- 没有在抖音开发者工具里导入运行过。
+- 没有真机数据：帧率、发热、触控手感、前后台切换均未测量。
+- 音频链路未验证：代码只在 `tt.createWebAudioContext` 存在时出声，否则静默。
+- 最关键的未知项：three.js 需要 **WebGL2**，目标设备与运行时是否提供、当前着色器能否编译，必须上机确认。
+
+### 导入抖音开发者工具
+
+1. 执行 `npm run build:minigame`
+2. 开发者工具选择「导入项目」，目录选 `minigame-dist/`
+3. 把 `minigame/project.config.json` 的 `appid` 换成自己的小游戏 AppID，再重新构建一次
+4. 项目类型选「小游戏」，编译
+
+逐项上机验证清单见 `docs/minigame-verify.md`。
 
 ## 已知限制
 

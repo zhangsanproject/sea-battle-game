@@ -1,22 +1,32 @@
+import type { SoundPlayer } from './SoundPlayer';
 import type { KeyValueStorage } from '../platform/PlatformAdapter';
 
 const MASTER_VOLUME = 0.32;
 const SOUND_PREFERENCE_KEY = 'sea-battle:sound-enabled';
 
+export type AudioContextFactory = () => AudioContext | null;
+
 /**
  * Small procedural sound layer. No external audio files are loaded.
  * The AudioContext is created lazily and resumed on user interaction.
+ * A host without WebAudio (for example a mini-game runtime) can return null
+ * from the factory, which turns the manager into a silent implementation.
  */
-export class SoundManager {
+export class SoundManager implements SoundPlayer {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private enabled = true;
   private disposed = false;
   private readonly storage: KeyValueStorage | null;
+  private readonly contextFactory: AudioContextFactory | null;
 
-  constructor(storage?: KeyValueStorage) {
+  constructor(
+    storage?: KeyValueStorage,
+    contextFactory?: AudioContextFactory,
+  ) {
     this.storage = storage ?? null;
+    this.contextFactory = contextFactory ?? null;
 
     if (this.storage?.getItem(SOUND_PREFERENCE_KEY) === 'off') {
       this.enabled = false;
@@ -26,8 +36,10 @@ export class SoundManager {
       return;
     }
 
-    window.addEventListener('pointerdown', this.handleUserInteraction);
-    window.addEventListener('keydown', this.handleUserInteraction);
+    if (typeof window.addEventListener === 'function') {
+      window.addEventListener('pointerdown', this.handleUserInteraction);
+      window.addEventListener('keydown', this.handleUserInteraction);
+    }
   }
 
   get isEnabled(): boolean {
@@ -254,7 +266,10 @@ export class SoundManager {
     }
     this.disposed = true;
 
-    if (typeof window !== 'undefined') {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.removeEventListener === 'function'
+    ) {
       window.removeEventListener(
         'pointerdown',
         this.handleUserInteraction,
@@ -306,15 +321,32 @@ export class SoundManager {
     }
 
     if (!this.context) {
-      if (typeof window === 'undefined' || !window.AudioContext) {
+      const context = this.contextFactory
+        ? this.contextFactory()
+        : typeof window !== 'undefined' && window.AudioContext
+          ? new window.AudioContext()
+          : null;
+
+      if (
+        !context ||
+        typeof context.createGain !== 'function' ||
+        typeof context.createOscillator !== 'function'
+      ) {
         return null;
       }
 
-      this.context = new window.AudioContext();
-      this.masterGain = this.context.createGain();
-      this.masterGain.gain.value = this.enabled ? MASTER_VOLUME : 0;
-      this.masterGain.connect(this.context.destination);
-      this.noiseBuffer = this.createNoiseBuffer(this.context);
+      try {
+        this.masterGain = context.createGain();
+        this.masterGain.gain.value = this.enabled ? MASTER_VOLUME : 0;
+        this.masterGain.connect(context.destination);
+        this.noiseBuffer = this.createNoiseBuffer(context);
+        this.context = context;
+      } catch {
+        this.context = null;
+        this.masterGain = null;
+        this.noiseBuffer = null;
+        return null;
+      }
     }
 
     return this.context;

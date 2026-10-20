@@ -1,17 +1,17 @@
 import { Vector2 } from 'three';
-import type { SoundManager } from '../audio/SoundManager';
+import type { SoundPlayer } from '../audio/SoundPlayer';
 import type {
   InputSource,
   PlatformAdapter,
 } from '../platform/PlatformAdapter';
-import { HUD } from '../ui/HUD';
+import type { GameHud } from '../ui/GameHud';
 import { GAME_CONFIG } from './config';
 import type { EnemyShip } from './entities/EnemyShip';
 import { PlayerShip } from './entities/PlayerShip';
 import { GameLoop } from './GameLoop';
 import { ProgressionSystem } from './progression/ProgressionSystem';
 import type { UpgradeId } from './progression/types';
-import { SceneManager } from './SceneManager';
+import type { SceneManager } from './SceneManager';
 import { BossSystem } from './systems/BossSystem';
 import { DangerSystem } from './systems/DangerSystem';
 import { EnemyAISystem } from './systems/EnemyAISystem';
@@ -28,6 +28,15 @@ import { TorpedoSystem } from './systems/TorpedoSystem';
 import { WeaponSystem } from './systems/WeaponSystem';
 
 type GamePhase = 'playing' | 'upgrade' | 'gameover';
+
+export interface GameServices {
+  sceneManager: SceneManager;
+  hud: GameHud;
+  sound: SoundPlayer;
+  platform: PlatformAdapter;
+  /** Optional DOM root used by the web input implementation. */
+  inputHost?: HTMLElement | null;
+}
 
 export class Game {
   private readonly sceneManager: SceneManager;
@@ -48,10 +57,9 @@ export class Game {
   private readonly torpedoSystem: TorpedoSystem;
   private readonly missileSystem: MissileSystem;
   private readonly progression: ProgressionSystem;
-  private readonly hud: HUD;
+  private readonly hud: GameHud;
   private readonly loop: GameLoop;
-  private readonly onRestart: () => void;
-  private readonly sound: SoundManager;
+  private readonly sound: SoundPlayer;
   private readonly inputVector = new Vector2();
   private unsubscribePause: (() => void) | null = null;
   private unsubscribeResume: (() => void) | null = null;
@@ -63,17 +71,11 @@ export class Game {
   private started = false;
   private disposed = false;
 
-  constructor(
-    container: HTMLElement,
-    uiRoot: HTMLElement,
-    onRestart: () => void,
-    sound: SoundManager,
-    platform: PlatformAdapter,
-  ) {
-    this.onRestart = onRestart;
-    this.sound = sound;
-    this.platform = platform;
-    this.sceneManager = new SceneManager(container);
+  constructor(services: GameServices) {
+    this.sound = services.sound;
+    this.platform = services.platform;
+    this.sceneManager = services.sceneManager;
+    this.hud = services.hud;
 
     this.playerShip = new PlayerShip();
     this.enemyManager = new EnemyManager();
@@ -96,10 +98,6 @@ export class Game {
       this.progression.combatStats.missileLevel,
     );
 
-    this.hud = new HUD(uiRoot, this.handleRestartRequest, {
-      enabled: this.sound.isEnabled,
-      toggle: () => this.sound.toggle(),
-    });
     this.hud.update(this.playerShip.status);
     this.hud.setExperience(
       this.progression.currentExperience,
@@ -107,7 +105,9 @@ export class Game {
     );
     this.hud.setDangerTier(this.dangerTier);
 
-    this.inputManager = this.platform.createInput(uiRoot);
+    this.inputManager = this.platform.createInput(
+      services.inputHost ?? null,
+    );
 
     this.pickupSystem = new PickupSystem((value) => {
       this.handleExperienceCollected(value);
@@ -203,6 +203,7 @@ export class Game {
       render: (frameDelta) => {
         this.sceneManager.update(frameDelta, this.playerShip.root.position);
         this.sceneManager.render();
+        this.hud.render(frameDelta);
       },
     });
   }
@@ -469,14 +470,6 @@ export class Game {
       bossKills: this.bossKills,
     });
   }
-
-  private readonly handleRestartRequest = (): void => {
-    if (this.phase !== 'gameover') {
-      return;
-    }
-
-    this.onRestart();
-  };
 
   private readonly handlePause = (): void => {
     if (!this.started || this.disposed) {

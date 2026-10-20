@@ -1,7 +1,9 @@
 import './style.css';
 import { SoundManager } from './audio/SoundManager';
 import { Game } from './game/Game';
+import { SceneManager } from './game/SceneManager';
 import { WebPlatform } from './platform/WebPlatform';
+import { HUD } from './ui/HUD';
 
 function showStartupError(root: HTMLElement, error: unknown): void {
   console.error('[海战霸主] 3D 场景启动失败', error);
@@ -34,23 +36,34 @@ function bootstrap(): void {
 
     starting = true;
 
+    let sceneManager: SceneManager | null = null;
+    let hud: HUD | null = null;
+
     try {
       const previousGame = activeGame;
       activeGame = null;
       previousGame?.dispose();
 
-      const nextGame = new Game(
-        container,
-        uiRoot,
-        startGame,
+      sceneManager = new SceneManager({ container });
+      hud = new HUD(uiRoot, startGame, {
+        enabled: sound.isEnabled,
+        toggle: () => sound.toggle(),
+      });
+
+      const nextGame = new Game({
+        sceneManager,
+        hud,
         sound,
         platform,
-      );
+        inputHost: uiRoot,
+      });
       activeGame = nextGame;
       nextGame.start();
     } catch (error) {
       activeGame?.dispose();
       activeGame = null;
+      hud?.dispose();
+      sceneManager?.dispose();
       uiRoot.replaceChildren();
       showStartupError(uiRoot, error);
     } finally {

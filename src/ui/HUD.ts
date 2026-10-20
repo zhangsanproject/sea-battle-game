@@ -1,19 +1,8 @@
 import type { PlayerStatus } from '../game/entities/PlayerShip';
 import type { UpgradeId, UpgradeOffer } from '../game/progression/types';
+import type { GameHud, GameOverStats, SoundControls } from './GameHud';
 
-export interface GameOverStats {
-  survivalSeconds: number;
-  kills: number;
-  level: number;
-  bossKills: number;
-}
-
-export interface SoundControls {
-  enabled: boolean;
-  toggle: () => boolean;
-}
-
-export class HUD {
+export class HUD implements GameHud {
   private readonly root: HTMLElement;
   private readonly levelValue: HTMLElement;
   private readonly healthValue: HTMLElement;
@@ -420,6 +409,8 @@ export class HUD {
     this.upgradeSelectionHandler = null;
     this.upgradeChoicePending = false;
   }
+
+  render(_deltaTime: number): void {}
 
   showGameOver(stats: GameOverStats): void {
     if (this.disposed) {

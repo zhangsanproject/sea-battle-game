@@ -7,15 +7,25 @@ const LOOK_AHEAD = new THREE.Vector3(0, 0.9, -2.4);
 const FOG_COLOR = 0x93c7d4;
 const SUN_OFFSET = new THREE.Vector3(26, 34, 14);
 
+export interface SceneManagerOptions {
+  /** Web container. The renderer canvas is appended to it. */
+  container?: HTMLElement | null;
+  /** Pre-created canvas, used by mini-game runtimes. */
+  canvas?: HTMLCanvasElement | null;
+  width?: number;
+  height?: number;
+  pixelRatio?: number;
+}
+
 export class SceneManager {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
 
   private readonly renderer: THREE.WebGLRenderer;
-  private readonly container: HTMLElement;
+  private readonly container: HTMLElement | null;
   private readonly ocean: Ocean;
   private readonly sun: THREE.DirectionalLight;
-  private readonly resizeObserver: ResizeObserver;
+  private readonly resizeObserver: ResizeObserver | null;
   private readonly cameraTarget = new THREE.Vector3();
   private readonly desiredCameraPosition = new THREE.Vector3();
   private readonly desiredLookTarget = new THREE.Vector3();
@@ -27,8 +37,8 @@ export class SceneManager {
   private qualityChangeCooldown = 0;
   private disposed = false;
 
-  constructor(container: HTMLElement) {
-    this.container = container;
+  constructor(options: SceneManagerOptions) {
+    this.container = options.container ?? null;
     this.scene.background = new THREE.Color(FOG_COLOR);
     this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0044);
 
@@ -37,20 +47,29 @@ export class SceneManager {
     this.cameraTarget.copy(LOOK_AHEAD);
     this.camera.lookAt(this.cameraTarget);
 
-    this.renderer = new THREE.WebGLRenderer({
+    const rendererOptions: THREE.WebGLRendererParameters = {
       antialias: true,
       alpha: false,
       powerPreference: 'high-performance',
-    });
+    };
+    if (options.canvas) {
+      rendererOptions.canvas = options.canvas;
+    }
+
+    this.renderer = new THREE.WebGLRenderer(rendererOptions);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // three r186 removed PCFSoftShadowMap; the renderer silently fell back to
+    // PCFShadowMap, so request it directly and keep the console clean.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
-    this.renderer.domElement.setAttribute('aria-hidden', 'true');
-    this.renderer.domElement.className = 'scene-canvas';
-    this.container.appendChild(this.renderer.domElement);
+    if (this.container && !options.canvas) {
+      this.renderer.domElement.setAttribute('aria-hidden', 'true');
+      this.renderer.domElement.className = 'scene-canvas';
+      this.container.appendChild(this.renderer.domElement);
+    }
 
     const hemisphereLight = new THREE.HemisphereLight(0xe1f6ff, 0x19465a, 1.45);
     this.scene.add(hemisphereLight);
@@ -73,11 +92,23 @@ export class SceneManager {
     this.ocean = new Ocean();
     this.scene.add(this.ocean.mesh);
 
-    this.resizeObserver = new ResizeObserver(() => {
+    const ResizeObserverConstructor =
+      typeof ResizeObserver !== 'undefined' ? ResizeObserver : null;
+    this.resizeObserver =
+      this.container && ResizeObserverConstructor
+        ? new ResizeObserverConstructor(() => {
+            this.resize();
+          })
+        : null;
+    if (this.resizeObserver && this.container) {
+      this.resizeObserver.observe(this.container);
+    }
+
+    if (options.width && options.height) {
+      this.applyViewport(options.width, options.height, options.pixelRatio);
+    } else {
       this.resize();
-    });
-    this.resizeObserver.observe(this.container);
-    this.resize();
+    }
   }
 
   add(...objects: THREE.Object3D[]): void {
@@ -123,7 +154,7 @@ export class SceneManager {
     }
     this.disposed = true;
 
-    this.resizeObserver.disconnect();
+    this.resizeObserver?.disconnect();
     this.ocean.dispose();
     this.scene.remove(this.ocean.mesh);
     this.scene.remove(this.sun);
@@ -131,23 +162,50 @@ export class SceneManager {
     this.scene.clear();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
-    this.renderer.domElement.remove();
+
+    if (
+      this.container &&
+      this.renderer.domElement.parentNode === this.container
+    ) {
+      this.container.removeChild(this.renderer.domElement);
+    }
   }
 
-  private resize(): void {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+  resize(width?: number, height?: number, pixelRatio?: number): void {
+    if (width !== undefined && height !== undefined) {
+      this.applyViewport(width, height, pixelRatio);
+      return;
+    }
 
+    if (!this.container) {
+      return;
+    }
+
+    this.applyViewport(
+      this.container.clientWidth,
+      this.container.clientHeight,
+    );
+  }
+
+  private applyViewport(
+    width: number,
+    height: number,
+    pixelRatio?: number,
+  ): void {
     if (width === 0 || height === 0) {
       return;
     }
 
-    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const coarsePointer =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(pointer: coarse)').matches
+        : true;
     const maxPixelRatio = coarsePointer ? 1.5 : 2;
-    this.basePixelRatio = Math.min(
-      window.devicePixelRatio || 1,
-      maxPixelRatio,
-    );
+    const devicePixelRatio =
+      pixelRatio ??
+      (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+    this.basePixelRatio = Math.min(devicePixelRatio, maxPixelRatio);
 
     this.renderer.setSize(width, height, false);
     this.applyPixelRatio();

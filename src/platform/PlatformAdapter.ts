@@ -21,7 +21,7 @@ export type Unsubscribe = () => void;
  */
 export interface PlatformAdapter {
   readonly storage: KeyValueStorage;
-  createInput(uiRoot: HTMLElement): InputSource;
+  createInput(host?: HTMLElement | null): InputSource;
   isPaused(): boolean;
   onPause(listener: () => void): Unsubscribe;
   onResume(listener: () => void): Unsubscribe;

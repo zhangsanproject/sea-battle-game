@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:minigame": "tsc --noEmit && vite build --config vite.minigame.config.ts && node scripts/copy-minigame-files.mjs",
+    "smoke:minigame": "node scripts/minigame-smoke.mjs",
+    "verify:minigame": "npm run build:minigame && npm run smoke:minigame && npm test",
     "preview": "vite preview",
     "test": "vitest run",
     "deploy": "npm run build && wrangler deploy",

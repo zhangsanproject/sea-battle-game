@@ -45,8 +45,8 @@ export class WebPlatform implements PlatformAdapter {
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
-  createInput(uiRoot: HTMLElement): InputSource {
-    return new InputManager(uiRoot);
+  createInput(host?: HTMLElement | null): InputSource {
+    return new InputManager(host ?? document.body);
   }
 
   isPaused(): boolean {

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+minigame-dist/
 coverage/
 .vite/
 .wrangler/
@@ -9,3 +10,7 @@ coverage/
 .env.*
 .DS_Store
 Thumbs.db
+
+# 本地工具状态（辅导记录、会话记忆），不入库
+.mentor/
+.workbuddy/
