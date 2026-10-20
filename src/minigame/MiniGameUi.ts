@@ -460,30 +460,23 @@ export class MiniGameUi implements GameHud, InputSource {
 
   private drawJoystick(): void {
     const ctx = this.context;
-    const baseX =
-      this.activeTouchId !== null
-        ? this.joystickBaseX
-        : this.defaultJoystickX;
-    const baseY =
-      this.activeTouchId !== null
-        ? this.joystickBaseY
-        : this.defaultJoystickY;
+    const active = this.activeTouchId !== null;
+    const baseX = active ? this.joystickBaseX : this.defaultJoystickX;
+    const baseY = active ? this.joystickBaseY : this.defaultJoystickY;
     const radius = this.joystickRadius;
     const knobX = baseX + this.joystickValue.x * radius * 0.78;
     const knobY = baseY - this.joystickValue.y * radius * 0.78;
 
     ctx.beginPath();
     ctx.arc(baseX, baseY, radius, 0, Math.PI * 2);
-    ctx.fillStyle =
-      this.activeTouchId !== null
-        ? 'rgba(23, 73, 84, 0.5)'
-        : 'rgba(10, 43, 53, 0.34)';
+    ctx.fillStyle = active
+      ? 'rgba(23, 73, 84, 0.5)'
+      : 'rgba(10, 43, 53, 0.34)';
     ctx.fill();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle =
-      this.activeTouchId !== null
-        ? 'rgba(226, 191, 120, 0.58)'
-        : 'rgba(155, 215, 223, 0.28)';
+    ctx.strokeStyle = active
+      ? 'rgba(226, 191, 120, 0.58)'
+      : 'rgba(155, 215, 223, 0.28)';
     ctx.stroke();
 
     ctx.beginPath();
@@ -499,8 +492,19 @@ export class MiniGameUi implements GameHud, InputSource {
     ctx.strokeStyle = 'rgba(255, 236, 190, 0.7)';
     ctx.stroke();
 
-    ctx.textAlign = 'center';
-    this.text('移动', baseX, baseY + radius + 16, 10, MUTED);
+    if (!active) {
+      ctx.textAlign = 'center';
+      this.text(
+        '按住屏幕任意位置拖动',
+        Math.min(
+          Math.max(baseX, 58),
+          Math.max(58, this.width - 58),
+        ),
+        Math.min(baseY + radius + 16, this.height - 8),
+        10,
+        MUTED,
+      );
+    }
   }
 
   private drawUpgradeOverlay(): void {
@@ -920,15 +924,12 @@ export class MiniGameUi implements GameHud, InputSource {
       return;
     }
 
-    if (
-      !this.inputEnabled ||
-      this.activeTouchId !== null ||
-      x > this.width * 0.62 ||
-      y < this.height * 0.32
-    ) {
+    if (!this.inputEnabled || this.activeTouchId !== null) {
       return;
     }
 
+    // The stick spawns under the finger wherever it lands, so the player can
+    // steer from any part of the screen instead of hunting for a fixed pad.
     this.activeTouchId = touch.identifier;
     this.joystickBaseX = x;
     this.joystickBaseY = y;

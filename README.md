@@ -239,6 +239,7 @@ Cannot modify Vite config: could not find a valid plugins array
 
 - `src/minigame/main.ts`：创建屏幕画布与离屏 WebGL 画布，每帧把 3D 画面合成到 2D HUD 下方。
 - `src/minigame/MiniGameUi.ts`：Canvas HUD、虚拟摇杆、升级卡片与结算面板，实现与网页 HUD 相同的 `GameHud` 接口。
+  摇杆是“全屏浮动”式：手指按在屏幕任何位置，就在按下的地方生成基座并开始转向，不必去找固定的左下角摇杆（音效按钮占用的区域除外）。
 - `src/platform/MiniGamePlatform.ts`：`tt` 存储、生命周期与输入注入。
 - `src/minigame/runtime.ts`：只声明本项目用到的 `tt` 接口，网页构建不依赖小游戏类型。
 

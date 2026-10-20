@@ -143,13 +143,58 @@ describe('MiniGameUi joystick input', () => {
     expect(moveVector(ui).length()).toBe(0);
   });
 
-  it('ignores touches on the right-hand side of the screen', () => {
+  it('starts the stick from the right-hand side of the screen', () => {
     const { ui, fake } = createHarness();
 
-    emitTouch(fake.touchHandlers.start, 1, 300, 600);
-    emitTouch(fake.touchHandlers.move, 1, 250, 600);
+    emitTouch(fake.touchHandlers.start, 1, 320, 600);
+    emitTouch(fake.touchHandlers.move, 1, 290, 600);
 
+    expect(moveVector(ui).x).toBeLessThan(-0.3);
+  });
+
+  it('starts the stick from the upper part of the screen', () => {
+    const { ui, fake } = createHarness();
+
+    emitTouch(fake.touchHandlers.start, 1, 180, 140);
+    emitTouch(fake.touchHandlers.move, 1, 180, 110);
+
+    expect(moveVector(ui).y).toBeGreaterThan(0.3);
+  });
+
+  it('responds identically wherever the drag begins', () => {
+    const { ui, fake } = createHarness();
+
+    emitTouch(fake.touchHandlers.start, 1, 60, 700);
+    emitTouch(fake.touchHandlers.move, 1, 90, 700);
+    const fromBottomLeft = moveVector(ui).x;
+    emitTouchEnd(fake.touchHandlers.end, 1, 90, 700);
+
+    emitTouch(fake.touchHandlers.start, 2, 300, 160);
+    emitTouch(fake.touchHandlers.move, 2, 330, 160);
+
+    expect(fromBottomLeft).toBeGreaterThan(0.3);
+    expect(moveVector(ui).x).toBeCloseTo(fromBottomLeft, 6);
+  });
+
+  it('keeps the sound button from hijacking a drag', () => {
+    const { ui, fake, toggleSound } = createHarness();
+
+    ui.render(1 / 60);
+    emitTouch(fake.touchHandlers.start, 1, 300, 104);
+    emitTouch(fake.touchHandlers.move, 1, 350, 104);
+
+    expect(toggleSound).toHaveBeenCalledTimes(1);
     expect(moveVector(ui).length()).toBe(0);
+  });
+
+  it('shows the anywhere-on-screen hint before the first touch', () => {
+    const { ui, screenCanvas } = createHarness();
+
+    ui.render(1 / 60);
+
+    expect(screenCanvas.calls.texts.join(' | ')).toContain(
+      '按住屏幕任意位置拖动',
+    );
   });
 
   it('clamps the joystick when the finger moves past the radius', () => {
