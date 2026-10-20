@@ -1,3 +1,4 @@
+import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { GAME_CONFIG } from '../src/game/config';
 import { PlayerShip } from '../src/game/entities/PlayerShip';
@@ -229,8 +230,7 @@ describe('ProgressionSystem', () => {
     player.dispose();
   });
 
-  it('starts a fresh run with default state', () => {
-    const firstPlayer = new PlayerShip();
+  it('starts a fresh run with default state', () => {    const firstPlayer = new PlayerShip();
     const firstProgression = new ProgressionSystem(
       firstPlayer,
       createRandom(5),
@@ -260,5 +260,114 @@ describe('ProgressionSystem', () => {
 
     firstPlayer.dispose();
     secondPlayer.dispose();
+  });
+});
+
+describe('weapon unlocks', () => {
+  it('starts a run with the main gun only', () => {
+    const player = new PlayerShip();
+    const progression = new ProgressionSystem(player, createRandom(13));
+    const stats = progression.combatStats;
+
+    expect(stats.secondaryLevel).toBe(0);
+    expect(stats.torpedoLevel).toBe(0);
+    expect(stats.missileLevel).toBe(0);
+
+    player.setSecondaryWeaponLevel(stats.secondaryLevel);
+    player.setTorpedoWeaponLevel(stats.torpedoLevel);
+    player.setMissileWeaponLevel(stats.missileLevel);
+
+    expect(
+      player.getSecondaryMuzzleWorldPositions([new Vector3(), new Vector3()]),
+    ).toBe(0);
+    expect(
+      player.getMissileMuzzleWorldPositions(
+        Array.from({ length: 4 }, () => new Vector3()),
+      ),
+    ).toBe(0);
+
+    player.dispose();
+  });
+
+  it('offers a locked weapon first while any weapon is still missing', () => {
+    const player = new PlayerShip();
+    // random() === 0 keeps the unlock branch deterministic.
+    const progression = new ProgressionSystem(player, () => 0);
+    progression.addExperience(GAME_CONFIG.progression.baseExperience);
+
+    const offers = progression.beginUpgradeSelection();
+    const first = offers[0];
+
+    expect(first).toBeDefined();
+    expect(['secondary', 'torpedo', 'missile']).toContain(first?.id);
+    expect(offers).toHaveLength(3);
+    expect(new Set(offers.map((offer) => offer.id)).size).toBe(3);
+
+    player.dispose();
+  });
+
+  it('stops pushing the same weapon once it is installed', () => {
+    const player = new PlayerShip();
+    const progression = new ProgressionSystem(player, () => 0);
+    progression.addExperience(600);
+
+    const offers = progression.beginUpgradeSelection();
+    const unlock = offers[0];
+    if (!unlock) {
+      throw new Error('Expected an unlock offer');
+    }
+
+    expect(progression.applyUpgrade(unlock.id)).toBe(true);
+
+    const nextOffers = progression.beginUpgradeSelection();
+    expect(nextOffers[0]?.id).not.toBe(unlock.id);
+
+    player.dispose();
+  });
+
+  it('guarantees a weapon on the first level-up even with unlucky rolls', () => {
+    const player = new PlayerShip();
+    // 0.99 fails the coin flip, so only the first-level guarantee can fire.
+    const progression = new ProgressionSystem(player, () => 0.99);
+    progression.addExperience(GAME_CONFIG.progression.baseExperience);
+
+    const offers = progression.beginUpgradeSelection();
+    const weaponIds = offers
+      .map((offer) => offer.id)
+      .filter((id) => ['secondary', 'torpedo', 'missile'].includes(id));
+
+    expect(weaponIds.length).toBeGreaterThan(0);
+
+    player.dispose();
+  });
+
+  it('falls back to the normal pool once every weapon is installed', () => {
+    const player = new PlayerShip();
+    const progression = new ProgressionSystem(player, () => 0);
+    progression.addExperience(5000);
+
+    for (let step = 0; step < 20; step += 1) {
+      const offers = progression.beginUpgradeSelection();
+      if (offers.length === 0) {
+        break;
+      }
+      const weapon = offers.find((offer) =>
+        ['secondary', 'torpedo', 'missile'].includes(offer.id),
+      );
+      progression.applyUpgrade(weapon?.id ?? offers[0]!.id);
+      if (
+        progression.combatStats.secondaryLevel > 0 &&
+        progression.combatStats.torpedoLevel > 0 &&
+        progression.combatStats.missileLevel > 0
+      ) {
+        break;
+      }
+    }
+
+    expect(progression.combatStats.secondaryLevel).toBeGreaterThan(0);
+    expect(progression.combatStats.torpedoLevel).toBeGreaterThan(0);
+    expect(progression.combatStats.missileLevel).toBeGreaterThan(0);
+
+    player.dispose();
   });
 });

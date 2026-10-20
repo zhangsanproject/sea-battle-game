@@ -405,6 +405,10 @@ export const GAME_CONFIG = {
     projectileDamage: 12,
     projectileCount: 2,
     projectileMaxDistance: 38,
+    /** Downward pull on shells, in units per second squared. 0 = flat shot. */
+    shellGravity: 14,
+    /** How long the tracer streak stays visible behind a shell, in seconds. */
+    tracerSeconds: 0.16,
   },
   pickup: {
     magnetRadius: 10,
@@ -417,13 +421,20 @@ export const GAME_CONFIG = {
     baseExperience: 30,
     experienceGrowth: 20,
     upgradeChoiceCount: 3,
+    /**
+     * Chance that one card in a level-up offer is a still-locked weapon, so
+     * every run reaches the secondary battery / torpedoes / missiles early.
+     */
+    weaponUnlockOfferChance: 0.5,
   },
   evolution: {
     levels: [2, 3, 4, 6, 8, 10, 13, 16, 20] as const,
   },
   playerWeapons: {
+    // Every weapon except the main gun starts locked (level 0) and is
+    // installed through its level-up upgrade.
     secondary: {
-      initialLevel: 1,
+      initialLevel: 0,
       baseDamageFactor: 0.36,
       damagePerLevel: 1.5,
       baseFireInterval: 0.52,
@@ -435,7 +446,7 @@ export const GAME_CONFIG = {
       turretTurnSpeed: 4.2,
     },
     torpedo: {
-      initialLevel: 1,
+      initialLevel: 0,
       baseDamage: 46,
       damagePerLevel: 16,
       baseFireInterval: 3.2,
@@ -447,7 +458,7 @@ export const GAME_CONFIG = {
       projectileMaxDistance: 38,
     },
     missile: {
-      initialLevel: 1,
+      initialLevel: 0,
       baseDamage: 30,
       damagePerLevel: 12,
       baseFireInterval: 2.8,

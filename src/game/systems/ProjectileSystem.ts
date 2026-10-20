@@ -7,6 +7,8 @@ import { segmentIntersectsSphere } from './collision';
 
 const PROJECTILE_POOL_SIZE = 48;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+/** Recorded positions kept per projectile for the curved tracer trail. */
+const TRAIL_POINTS = 8;
 
 export type ProjectileOwner = 'player' | 'enemy';
 
@@ -23,6 +25,8 @@ export interface ProjectileFireOptions {
   turnRate?: number;
   splashRadius?: number;
   splashDamageFactor?: number;
+  /** Downward pull applied to the projectile. Shells arc when this is > 0. */
+  gravity?: number;
 }
 
 export interface ProjectileSystemOptions {
@@ -35,6 +39,8 @@ export interface ProjectileSystemOptions {
     kind: ProjectileKind,
   ) => void;
   onPlayerHit: (damageTaken: number) => void;
+  /** Emits smoke / wake puffs behind missiles and torpedoes while they fly. */
+  onTrailPuff?: (position: THREE.Vector3, kind: ProjectileKind) => void;
 }
 
 interface ProjectileSlot {
@@ -50,7 +56,86 @@ interface ProjectileSlot {
   turnRate: number;
   splashRadius: number;
   splashDamageFactor: number;
+  gravity: number;
+  /** Shells follow their (arcing) velocity vector instead of the launch line. */
+  orientWithVelocity: boolean;
+  trailTimer: number;
+  trailRed: number;
+  trailGreen: number;
+  trailBlue: number;
+  /** Byte offset of this slot inside the shared trail history buffer. */
+  trailOffset: number;
   active: boolean;
+}
+
+/**
+ * Solves the low-arc launch velocity that lands a projectile on `target` under
+ * constant gravity. Returns false when the target is out of reach at `speed`,
+ * so the caller can fall back to a straight shot.
+ */
+export function solveBallisticVelocity(
+  origin: THREE.Vector3,
+  target: THREE.Vector3,
+  speed: number,
+  gravity: number,
+  out: THREE.Vector3,
+): boolean {
+  if (speed <= 0) {
+    return false;
+  }
+
+  const deltaX = target.x - origin.x;
+  const deltaZ = target.z - origin.z;
+  const deltaY = target.y - origin.y;
+
+  if (gravity <= 0) {
+    out.set(deltaX, deltaY, deltaZ).normalize().multiplyScalar(speed);
+    return true;
+  }
+
+  const horizontal = Math.hypot(deltaX, deltaZ);
+
+  if (horizontal < 0.0001) {
+    out.set(0, deltaY >= 0 ? speed : -speed, 0);
+    return true;
+  }
+
+  const speedSq = speed * speed;
+  const discriminant =
+    speedSq * speedSq -
+    gravity * (gravity * horizontal * horizontal + 2 * deltaY * speedSq);
+
+  if (discriminant < 0) {
+    return false;
+  }
+
+  const tangent =
+    (speedSq - Math.sqrt(discriminant)) / (gravity * horizontal);
+  const cosine = 1 / Math.sqrt(1 + tangent * tangent);
+
+  out.set(
+    (deltaX / horizontal) * speed * cosine,
+    speed * tangent * cosine,
+    (deltaZ / horizontal) * speed * cosine,
+  );
+  return true;
+}
+
+function trailRgb(kind: ProjectileKind, owner: ProjectileOwner): [number, number, number] {
+  if (owner === 'enemy') {
+    return kind === 'missile' ? [1, 0.45, 0.2] : [1, 0.36, 0.22];
+  }
+
+  if (kind === 'missile') {
+    return [0.45, 0.85, 1];
+  }
+  if (kind === 'torpedo') {
+    return [1, 0.92, 0.72];
+  }
+  if (kind === 'secondary') {
+    return [1, 0.72, 0.3];
+  }
+  return [1, 0.82, 0.36];
 }
 
 export class ProjectileSystem {
@@ -63,6 +148,19 @@ export class ProjectileSystem {
   private readonly previousPosition = new THREE.Vector3();
   private readonly targetPoint = new THREE.Vector3();
   private readonly impactPoint = new THREE.Vector3();
+  private readonly ballisticVelocity = new THREE.Vector3();
+  private readonly trailGeometry = new THREE.BufferGeometry();
+  private readonly trailPositions = new Float32Array(
+    PROJECTILE_POOL_SIZE * (TRAIL_POINTS - 1) * 2 * 3,
+  );
+  private readonly trailColors = new Float32Array(
+    PROJECTILE_POOL_SIZE * (TRAIL_POINTS - 1) * 2 * 3,
+  );
+  private readonly trailLine: THREE.LineSegments;
+  /** Per-slot ring of recent positions, newest first. */
+  private readonly trailHistory = new Float32Array(
+    PROJECTILE_POOL_SIZE * TRAIL_POINTS * 3,
+  );
   private readonly geometry: THREE.CylinderGeometry;
   private readonly playerMaterial: THREE.MeshStandardMaterial;
   private readonly enemyMaterial: THREE.MeshStandardMaterial;
@@ -81,6 +179,9 @@ export class ProjectileSystem {
       ) => void)
     | null;
   private readonly onPlayerHit: (damageTaken: number) => void;
+  private readonly onTrailPuff:
+    | ((position: THREE.Vector3, kind: ProjectileKind) => void)
+    | null;
   private disposed = false;
 
   constructor(options: ProjectileSystemOptions) {
@@ -90,6 +191,7 @@ export class ProjectileSystem {
     this.onEnemyKilled = options.onEnemyKilled;
     this.onEnemyHit = options.onEnemyHit ?? null;
     this.onPlayerHit = options.onPlayerHit;
+    this.onTrailPuff = options.onTrailPuff ?? null;
 
     this.geometry = new THREE.CylinderGeometry(0.07, 0.105, 0.72, 6);
     this.playerMaterial = new THREE.MeshStandardMaterial({
@@ -156,9 +258,40 @@ export class ProjectileSystem {
         turnRate: 0,
         splashRadius: 0,
         splashDamageFactor: 0,
+        gravity: 0,
+        orientWithVelocity: false,
+        trailTimer: 0,
+        trailRed: 1,
+        trailGreen: 0.8,
+        trailBlue: 0.4,
+        trailOffset: index * TRAIL_POINTS * 3,
         active: false,
       });
     }
+
+    // One additive line batch carries every tracer trail, so the whole effect
+    // costs a single draw call no matter how many rounds are in the air.
+    const positionAttribute = new THREE.BufferAttribute(this.trailPositions, 3);
+    const colorAttribute = new THREE.BufferAttribute(this.trailColors, 3);
+    positionAttribute.setUsage(THREE.DynamicDrawUsage);
+    colorAttribute.setUsage(THREE.DynamicDrawUsage);
+    this.trailGeometry.setAttribute('position', positionAttribute);
+    this.trailGeometry.setAttribute('color', colorAttribute);
+
+    this.trailLine = new THREE.LineSegments(
+      this.trailGeometry,
+      new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    this.trailLine.name = 'ProjectileTrails';
+    this.trailLine.frustumCulled = false;
+    this.trailLine.renderOrder = 9;
+    this.root.add(this.trailLine);
   }
 
   getActiveCount(): number {
@@ -183,9 +316,32 @@ export class ProjectileSystem {
     const kind = options.kind ?? 'shell';
     const verticalLaunchSeconds =
       kind === 'missile' ? Math.max(0, options.verticalLaunchSeconds ?? 0) : 0;
+    const gravity =
+      verticalLaunchSeconds > 0 ? 0 : Math.max(0, options.gravity ?? 0);
+
+    let ballistic = false;
 
     if (verticalLaunchSeconds > 0) {
       this.direction.set(0, 1, 0);
+    } else if (gravity > 0) {
+      ballistic = solveBallisticVelocity(
+        origin,
+        target,
+        options.speed,
+        gravity,
+        this.ballisticVelocity,
+      );
+      if (ballistic) {
+        this.direction
+          .copy(this.ballisticVelocity)
+          .normalize();
+      } else {
+        this.direction.subVectors(target, origin);
+        if (this.direction.lengthSq() < 0.0001) {
+          return;
+        }
+        this.direction.normalize();
+      }
     } else {
       this.direction.subVectors(target, origin);
       if (this.direction.lengthSq() < 0.0001) {
@@ -212,18 +368,24 @@ export class ProjectileSystem {
           : options.owner === 'player'
             ? this.playerMaterial
             : this.enemyMaterial;
-    slot.mesh.scale.setScalar(
-      kind === 'torpedo'
-        ? 1.9
-        : kind === 'missile'
-          ? 1.35
-          : kind === 'secondary'
-            ? 0.58
-            : 1,
-    );
+    // Shells are drawn as a stretched tracer, missiles and torpedoes keep
+    // their fatter body so the silhouette still reads at a distance.
+    if (kind === 'torpedo') {
+      slot.mesh.scale.setScalar(1.9);
+    } else if (kind === 'missile') {
+      slot.mesh.scale.setScalar(1.35);
+    } else if (kind === 'secondary') {
+      slot.mesh.scale.set(0.58, 0.95, 0.58);
+    } else {
+      slot.mesh.scale.set(0.92, 1.75, 0.92);
+    }
     slot.mesh.quaternion.setFromUnitVectors(WORLD_UP, this.direction);
     slot.mesh.visible = true;
-    slot.velocity.copy(this.direction).multiplyScalar(options.speed);
+    if (ballistic) {
+      slot.velocity.copy(this.ballisticVelocity);
+    } else {
+      slot.velocity.copy(this.direction).multiplyScalar(options.speed);
+    }
     slot.owner = options.owner;
     slot.kind = kind;
     slot.speed = options.speed;
@@ -235,7 +397,17 @@ export class ProjectileSystem {
     slot.turnRate = options.turnRate ?? 0;
     slot.splashRadius = options.splashRadius ?? 0;
     slot.splashDamageFactor = options.splashDamageFactor ?? 0;
+    slot.gravity = ballistic ? gravity : 0;
+    slot.orientWithVelocity = ballistic && kind !== 'missile';
+    slot.trailTimer = 0;
+
+    const [red, green, blue] = trailRgb(kind, options.owner);
+    slot.trailRed = red;
+    slot.trailGreen = green;
+    slot.trailBlue = blue;
     slot.active = true;
+
+    this.resetTrail(slot, origin);
   }
 
   update(deltaTime: number): void {
@@ -259,7 +431,16 @@ export class ProjectileSystem {
         }
       }
 
-      const stepDistance = slot.speed * deltaTime;
+      if (slot.gravity > 0) {
+        slot.velocity.y -= slot.gravity * deltaTime;
+
+        if (slot.orientWithVelocity && slot.velocity.lengthSq() > 0.0001) {
+          this.direction.copy(slot.velocity).normalize();
+          slot.mesh.quaternion.setFromUnitVectors(WORLD_UP, this.direction);
+        }
+      }
+
+      const stepDistance = slot.velocity.length() * deltaTime;
       this.previousPosition.copy(slot.mesh.position);
       slot.mesh.position.addScaledVector(slot.velocity, deltaTime);
       slot.distanceRemaining -= stepDistance;
@@ -272,10 +453,20 @@ export class ProjectileSystem {
         hit = this.updateEnemyProjectile(slot);
       }
 
-      if (!hit && slot.distanceRemaining <= 0) {
-        this.deactivate(slot);
+      if (hit) {
+        continue;
       }
+
+      if (slot.distanceRemaining <= 0) {
+        this.deactivate(slot);
+        continue;
+      }
+
+      this.recordTrail(slot);
+      this.emitTrailPuff(slot, deltaTime);
     }
+
+    this.updateTrailBuffer();
   }
 
   clear(): void {
@@ -284,6 +475,8 @@ export class ProjectileSystem {
         this.deactivate(slot);
       }
     }
+    this.trailColors.fill(0);
+    this.trailGeometry.getAttribute('color').needsUpdate = true;
   }
 
   dispose(): void {
@@ -297,6 +490,8 @@ export class ProjectileSystem {
     }
     this.root.clear();
     this.geometry.dispose();
+    this.trailGeometry.dispose();
+    (this.trailLine.material as THREE.Material).dispose();
     this.playerMaterial.dispose();
     this.enemyMaterial.dispose();
     this.torpedoMaterial.dispose();
@@ -457,5 +652,104 @@ export class ProjectileSystem {
     slot.launchPhaseRemaining = 0;
     slot.splashRadius = 0;
     slot.splashDamageFactor = 0;
+    slot.gravity = 0;
+    slot.orientWithVelocity = false;
+    slot.trailTimer = 0;
+  }
+
+  /** Fills a slot's history so a fresh round does not draw a line to the last. */
+  private resetTrail(slot: ProjectileSlot, origin: THREE.Vector3): void {
+    const base = slot.trailOffset;
+
+    for (let point = 0; point < TRAIL_POINTS; point += 1) {
+      const index = base + point * 3;
+      this.trailHistory[index] = origin.x;
+      this.trailHistory[index + 1] = origin.y;
+      this.trailHistory[index + 2] = origin.z;
+    }
+  }
+
+  private recordTrail(slot: ProjectileSlot): void {
+    const base = slot.trailOffset;
+    const stride = TRAIL_POINTS * 3;
+
+    this.trailHistory.copyWithin(base + 3, base, base + stride - 3);
+    this.trailHistory[base] = slot.mesh.position.x;
+    this.trailHistory[base + 1] = slot.mesh.position.y;
+    this.trailHistory[base + 2] = slot.mesh.position.z;
+  }
+
+  private emitTrailPuff(slot: ProjectileSlot, deltaTime: number): void {
+    if (!this.onTrailPuff) {
+      return;
+    }
+
+    if (slot.kind !== 'missile' && slot.kind !== 'torpedo') {
+      return;
+    }
+
+    slot.trailTimer -= deltaTime;
+
+    if (slot.trailTimer > 0) {
+      return;
+    }
+
+    slot.trailTimer = slot.kind === 'missile' ? 0.03 : 0.055;
+    this.onTrailPuff(slot.mesh.position, slot.kind);
+  }
+
+  /** Rewrites the shared line batch: one fading segment per recorded step. */
+  private updateTrailBuffer(): void {
+    const positions = this.trailPositions;
+    const colors = this.trailColors;
+    const history = this.trailHistory;
+    const segments = TRAIL_POINTS - 1;
+    let cursor = 0;
+
+    for (const slot of this.slots) {
+      if (!slot.active) {
+        for (let segment = 0; segment < segments; segment += 1) {
+          colors[cursor] = 0;
+          colors[cursor + 1] = 0;
+          colors[cursor + 2] = 0;
+          colors[cursor + 3] = 0;
+          colors[cursor + 4] = 0;
+          colors[cursor + 5] = 0;
+          cursor += 6;
+        }
+        continue;
+      }
+
+      const base = slot.trailOffset;
+
+      for (let segment = 0; segment < segments; segment += 1) {
+        const head = base + segment * 3;
+        const tail = head + 3;
+
+        positions[cursor] = history[head] ?? 0;
+        positions[cursor + 1] = history[head + 1] ?? 0;
+        positions[cursor + 2] = history[head + 2] ?? 0;
+        positions[cursor + 3] = history[tail] ?? 0;
+        positions[cursor + 4] = history[tail + 1] ?? 0;
+        positions[cursor + 5] = history[tail + 2] ?? 0;
+
+        const fade = 1 - segment / segments;
+        const level = fade * fade;
+
+        colors[cursor] = slot.trailRed * level;
+        colors[cursor + 1] = slot.trailGreen * level;
+        colors[cursor + 2] = slot.trailBlue * level;
+        colors[cursor + 3] = slot.trailRed * level * 0.8;
+        colors[cursor + 4] = slot.trailGreen * level * 0.8;
+        colors[cursor + 5] = slot.trailBlue * level * 0.8;
+
+        cursor += 6;
+      }
+    }
+
+    const positionAttribute = this.trailGeometry.getAttribute('position');
+    const colorAttribute = this.trailGeometry.getAttribute('color');
+    positionAttribute.needsUpdate = true;
+    colorAttribute.needsUpdate = true;
   }
 }

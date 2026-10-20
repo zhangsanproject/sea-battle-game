@@ -83,6 +83,7 @@ export class SecondaryWeaponSystem {
         damage,
         maxDistance: GAME_CONFIG.weapon.projectileMaxDistance,
         kind: 'secondary',
+        gravity: GAME_CONFIG.weapon.shellGravity,
       });
     }
 

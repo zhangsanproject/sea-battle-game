@@ -69,6 +69,9 @@ export class SceneManager {
   private readonly desiredCameraPosition = new THREE.Vector3();
   private readonly desiredLookTarget = new THREE.Vector3();
   private elapsedTime = 0;
+  private shakeStrength = 0;
+  private shakeTime = 0;
+  private shakeDuration = 0;
   private basePixelRatio = 1;
   private qualityScale = 1;
   private qualitySampleTime = 0;
@@ -159,6 +162,42 @@ export class SceneManager {
     this.scene.remove(...objects);
   }
 
+  /**
+   * Kicks the camera. Consecutive calls keep whichever kick is stronger, so a
+   * big explosion is not swallowed by a small one that landed just before it.
+   */
+  shake(strength: number, duration = 0.3): void {
+    if (strength <= 0 || duration <= 0) {
+      return;
+    }
+
+    this.shakeStrength = Math.max(this.shakeStrength, strength);
+    this.shakeDuration = Math.max(this.shakeDuration, duration);
+    this.shakeTime = this.shakeDuration;
+  }
+
+  private applyShake(delta: number): void {
+    if (this.shakeTime <= 0) {
+      return;
+    }
+
+    this.shakeTime = Math.max(0, this.shakeTime - delta);
+    const falloff = this.shakeDuration > 0 ? this.shakeTime / this.shakeDuration : 0;
+    const amplitude = this.shakeStrength * falloff * falloff;
+
+    if (amplitude <= 0) {
+      this.shakeStrength = 0;
+      return;
+    }
+
+    const phase = this.elapsedTime * 46;
+    this.camera.position.x += Math.sin(phase * 1.7) * amplitude;
+    this.camera.position.y += Math.sin(phase * 2.3 + 1.1) * amplitude * 0.65;
+    this.camera.position.z += Math.sin(phase * 1.3 + 2.4) * amplitude * 0.55;
+    this.cameraTarget.x += Math.sin(phase * 2.1 + 0.6) * amplitude * 0.3;
+    this.cameraTarget.y += Math.sin(phase * 1.9 + 2.8) * amplitude * 0.25;
+  }
+
   update(frameDelta: number, focusPosition: THREE.Vector3): void {
     const delta = Math.min(Math.max(frameDelta, 0), 0.1);
     this.elapsedTime += delta;
@@ -177,6 +216,7 @@ export class SceneManager {
 
     this.camera.position.lerp(this.desiredCameraPosition, smoothing);
     this.cameraTarget.lerp(this.desiredLookTarget, smoothing);
+    this.applyShake(delta);
     this.camera.lookAt(this.cameraTarget);
 
     this.sun.position.copy(focusPosition).add(SUN_OFFSET);

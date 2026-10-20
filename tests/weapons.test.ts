@@ -10,16 +10,19 @@ import { TargetingSystem } from '../src/game/systems/TargetingSystem';
 import { TorpedoSystem } from '../src/game/systems/TorpedoSystem';
 
 describe('expanded player weapons', () => {
-  it('builds secondary hardpoints and fires a burst from them', () => {
+  it('unlocks the secondary battery through its upgrade', () => {
     const player = new PlayerShip();
     const enemies = new EnemyManager();
     const stats = createCombatStats();
-    player.setSecondaryWeaponLevel(stats.secondaryLevel);
-    expect(
-      player.getSecondaryMuzzleWorldPositions(
-        Array.from({ length: 2 }, () => new Vector3()),
-      ),
-    ).toBe(2);
+    const muzzles = Array.from({ length: 2 }, () => new Vector3());
+
+    expect(stats.secondaryLevel).toBe(0);
+    player.setSecondaryWeaponLevel(0);
+    expect(player.getSecondaryMuzzleWorldPositions(muzzles)).toBe(0);
+
+    stats.secondaryLevel = 1;
+    player.setSecondaryWeaponLevel(1);
+    expect(player.getSecondaryMuzzleWorldPositions(muzzles)).toBe(2);
 
     let fireCalls = 0;
     const projectiles = new ProjectileSystem({
@@ -94,17 +97,19 @@ describe('expanded player weapons', () => {
     player.dispose();
   });
 
-  it('builds missile pods and launches guided missiles', () => {
+  it('builds missile pods and launches guided missiles after the unlock', () => {
     const player = new PlayerShip();
     const enemies = new EnemyManager();
     const stats = createCombatStats();
-    player.setMissileWeaponLevel(stats.missileLevel);
+    const muzzles = Array.from({ length: 4 }, () => new Vector3());
 
-    expect(
-      player.getMissileMuzzleWorldPositions(
-        Array.from({ length: 4 }, () => new Vector3()),
-      ),
-    ).toBe(4);
+    expect(stats.missileLevel).toBe(0);
+    player.setMissileWeaponLevel(0);
+    expect(player.getMissileMuzzleWorldPositions(muzzles)).toBe(0);
+
+    stats.missileLevel = 1;
+    player.setMissileWeaponLevel(1);
+    expect(player.getMissileMuzzleWorldPositions(muzzles)).toBe(4);
 
     let fireCalls = 0;
     const projectiles = new ProjectileSystem({

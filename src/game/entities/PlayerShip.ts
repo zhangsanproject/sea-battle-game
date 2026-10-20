@@ -140,6 +140,8 @@ export class PlayerShip {
     toneMapped: false,
   });
   private muzzleFlashTime = 0;
+  private recoilTime = 0;
+  private readonly gunRestZ = -1.92;
   private evolutionTier = 1;
   private disposed = false;
 
@@ -173,6 +175,13 @@ export class PlayerShip {
       for (const flash of this.muzzleFlashes) {
         flash.visible = visible;
       }
+    }
+
+    if (this.recoilTime > 0) {
+      this.recoilTime = Math.max(0, this.recoilTime - deltaTime);
+      // The whole turret slides back into its mount, then eases forward again.
+      const recoil = this.recoilTime / 0.12;
+      this.gun.position.z = this.gunRestZ + recoil * recoil * 0.3;
     }
   }
 
@@ -231,6 +240,7 @@ export class PlayerShip {
 
   triggerMuzzleFlash(): void {
     this.muzzleFlashTime = 0.075;
+    this.recoilTime = 0.12;
     for (const flash of this.muzzleFlashes) {
       flash.visible = true;
     }

@@ -27,7 +27,36 @@ describe('EffectSystem', () => {
       effects.spawnExplosion(new Vector3(0, 0, 0));
     }
 
-    expect(effects.getActiveCount()).toBeLessThanOrEqual(72);
+    // The pool is the hard cap: bursts beyond it are dropped, not allocated.
+    expect(effects.getActiveCount()).toBeLessThanOrEqual(128);
+
+    effects.dispose();
+  });
+
+  it('layers sparks, water and smoke on a shell impact', () => {
+    const effects = new EffectSystem();
+
+    effects.spawnImpact(new Vector3(0, 1, 0), 'shell');
+
+    expect(effects.getActiveCount()).toBeGreaterThanOrEqual(8);
+
+    for (let frame = 0; frame < 200; frame += 1) {
+      effects.update(1 / 60);
+    }
+
+    expect(effects.getActiveCount()).toBe(0);
+
+    effects.dispose();
+  });
+
+  it('spawns muzzle smoke and trail puffs without leaking slots', () => {
+    const effects = new EffectSystem();
+
+    effects.spawnMuzzleSmoke(new Vector3(0, 1, 0), 0, -30);
+    effects.spawnTrailPuff(new Vector3(0, 1, 0), 'missile');
+    effects.spawnTrailPuff(new Vector3(0, 1, 0), 'torpedo');
+
+    expect(effects.getActiveCount()).toBe(4);
 
     effects.dispose();
   });

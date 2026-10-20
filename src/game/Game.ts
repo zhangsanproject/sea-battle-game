@@ -124,14 +124,21 @@ export class Game {
         this.handleEnemyKilled(enemy);
       },
       onEnemyHit: (position, _enemy, kind) => {
-        if (kind === 'missile') {
-          this.effectSystem.spawnExplosion(position, 0.9);
-        } else {
-          this.effectSystem.spawnHit(position);
+        this.effectSystem.spawnImpact(position, kind);
+        if (kind === 'missile' || kind === 'torpedo') {
+          this.effectSystem.spawnExplosion(
+            position,
+            kind === 'missile' ? 0.9 : 0.6,
+          );
+          this.sound.playHit();
+          this.sceneManager.shake(0.13, 0.18);
         }
       },
       onPlayerHit: (damageTaken) => {
         this.handlePlayerHit(damageTaken);
+      },
+      onTrailPuff: (position, kind) => {
+        this.effectSystem.spawnTrailPuff(position, kind);
       },
     });
     this.sceneManager.add(this.projectileSystem.root);
@@ -148,6 +155,7 @@ export class Game {
       onDetonated: (position) => {
         this.effectSystem.spawnExplosion(position, 1.5);
         this.sound.playExplosion();
+        this.sceneManager.shake(0.6, 0.55);
       },
     });
     this.sceneManager.add(this.bossSystem.root);
@@ -169,7 +177,15 @@ export class Game {
       targeting,
       this.projectileSystem,
       this.progression.combatStats,
-      () => this.sound.playCannon(),
+      (muzzle, aim) => {
+        this.sound.playCannon();
+        this.effectSystem.spawnMuzzleSmoke(
+          muzzle,
+          aim.x - muzzle.x,
+          aim.z - muzzle.z,
+        );
+        this.sceneManager.shake(0.05, 0.09);
+      },
     );
     this.secondaryWeaponSystem = new SecondaryWeaponSystem(
       this.playerShip,
@@ -311,6 +327,10 @@ export class Game {
       enemy.isBoss ? 2.4 : enemy.isElite ? 1.35 : 1,
     );
     this.sound.playExplosion();
+    this.sceneManager.shake(
+      enemy.isBoss ? 0.45 : enemy.isElite ? 0.16 : 0.09,
+      enemy.isBoss ? 0.5 : 0.22,
+    );
 
     const repair = this.progression.combatStats.repairOnKill;
     if (repair > 0 && !this.playerShip.isDestroyed) {
@@ -355,6 +375,7 @@ export class Game {
     this.hud.showDamageFeedback();
     this.sound.playDamage();
     this.effectSystem.spawnHit(this.playerShip.root.position);
+    this.sceneManager.shake(0.3, 0.3);
 
     if (this.playerShip.isDestroyed) {
       this.endGame();

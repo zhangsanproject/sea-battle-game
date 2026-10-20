@@ -138,12 +138,20 @@ export class EnemyAISystem {
             horizontalDistance,
         );
 
+      const kind = enemy.profile.projectileKind;
+
       this.projectiles.fire(this.muzzlePosition, this.volleyTarget, {
         owner: 'enemy',
         speed: enemy.profile.projectileSpeed,
         damage: enemy.profile.projectileDamage,
         maxDistance: enemy.profile.projectileMaxDistance,
-        kind: enemy.profile.projectileKind,
+        kind,
+        // Torpedoes run on the surface and missiles launch upward, so only
+        // flat-trajectory shells arc under gravity.
+        gravity:
+          kind === 'torpedo' || kind === 'missile'
+            ? 0
+            : GAME_CONFIG.weapon.shellGravity,
       });
     }
   }

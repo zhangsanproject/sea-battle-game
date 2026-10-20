@@ -25,7 +25,7 @@ export class WeaponSystem {
     private readonly targeting: TargetingSystem,
     private readonly projectiles: ProjectileSystem,
     private readonly stats: CombatStats,
-    private readonly onFire?: () => void,
+    private readonly onFire?: (muzzle: Vector3, aim: Vector3) => void,
   ) {}
 
   update(deltaTime: number): void {
@@ -74,11 +74,15 @@ export class WeaponSystem {
         speed: GAME_CONFIG.weapon.projectileSpeed,
         damage: this.stats.weaponDamage,
         maxDistance: GAME_CONFIG.weapon.projectileMaxDistance,
+        gravity: GAME_CONFIG.weapon.shellGravity,
       });
     }
 
     this.player.triggerMuzzleFlash();
-    this.onFire?.();
+    const firstMuzzle = this.muzzlePositions[0];
+    if (firstMuzzle) {
+      this.onFire?.(firstMuzzle, this.aimPoint);
+    }
     this.cooldown = this.stats.fireInterval;
   }
 

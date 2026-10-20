@@ -96,7 +96,9 @@ export const UPGRADE_DEFINITIONS: readonly UpgradeDefinition[] = [
     tag: '火力',
     maxLevel: 3,
     getDescription: (stats) =>
-      `两舷副炮自动开火（当前 Lv.${stats.secondaryLevel}），威力与射速提升`,
+      stats.secondaryLevel === 0
+        ? '解锁两舷副炮：各一座速射炮塔，自动瞄准并独立开火'
+        : `副炮威力与射速提升（Lv.${stats.secondaryLevel} → Lv.${stats.secondaryLevel + 1}）`,
     apply: ({ stats }) => {
       stats.secondaryLevel += 1;
     },

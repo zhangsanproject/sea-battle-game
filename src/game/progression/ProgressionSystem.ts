@@ -11,6 +11,13 @@ import {
 
 export type RandomSource = () => number;
 
+/** Upgrades that install a weapon instead of improving one. */
+const WEAPON_UNLOCK_IDS: readonly UpgradeId[] = [
+  'secondary',
+  'torpedo',
+  'missile',
+];
+
 export function selectUpgradeChoices(
   definitions: readonly UpgradeDefinition[],
   levels: Readonly<Record<UpgradeId, number>>,
@@ -125,12 +132,7 @@ export class ProgressionSystem {
       return this.currentOffers;
     }
 
-    const choices = selectUpgradeChoices(
-      UPGRADE_DEFINITIONS,
-      this.upgradeLevels,
-      GAME_CONFIG.progression.upgradeChoiceCount,
-      this.random,
-    );
+    const choices = this.pickDefinitions(UPGRADE_DEFINITIONS);
 
     this.currentOffers = choices.map((definition) => ({
       id: definition.id,
@@ -177,5 +179,51 @@ export class ProgressionSystem {
 
   getUpgradeLevel(id: UpgradeId): number {
     return this.upgradeLevels[id];
+  }
+
+  /**
+   * Shows the weapon unlocks early: while a weapon is still at level 0 there
+   * is a configured chance that one card is that weapon, so a run does not
+   * spend its first levels firing the main gun alone. The very first level-up
+   * of a run always offers one, since the main gun alone kills too slowly.
+   */
+  private pickDefinitions(
+    definitions: readonly UpgradeDefinition[],
+  ): UpgradeDefinition[] {
+    const count = GAME_CONFIG.progression.upgradeChoiceCount;
+    const lockedWeapons = definitions.filter(
+      (definition) =>
+        WEAPON_UNLOCK_IDS.includes(definition.id) &&
+        this.upgradeLevels[definition.id] === 0,
+    );
+    const installedWeapons = WEAPON_UNLOCK_IDS.filter(
+      (id) => this.upgradeLevels[id] > 0,
+    ).length;
+
+    const forced: UpgradeDefinition[] = [];
+    const forceUnlock =
+      installedWeapons === 0 ||
+      this.random() < GAME_CONFIG.progression.weaponUnlockOfferChance;
+
+    if (lockedWeapons.length > 0 && forceUnlock) {
+      const index = Math.min(
+        lockedWeapons.length - 1,
+        Math.floor(this.random() * lockedWeapons.length),
+      );
+      const picked = lockedWeapons[index];
+      if (picked) {
+        forced.push(picked);
+      }
+    }
+
+    const forcedIds = new Set(forced.map((definition) => definition.id));
+    const rest = selectUpgradeChoices(
+      definitions.filter((definition) => !forcedIds.has(definition.id)),
+      this.upgradeLevels,
+      count - forced.length,
+      this.random,
+    );
+
+    return [...forced, ...rest];
   }
 }
