@@ -9,6 +9,7 @@ export interface CombatStats {
   moveSpeed: number;
   secondaryLevel: number;
   torpedoLevel: number;
+  missileLevel: number;
   experienceMultiplier: number;
   magnetRadiusBonus: number;
   repairOnKill: number;
@@ -23,6 +24,7 @@ export type UpgradeId =
   | 'health'
   | 'secondary'
   | 'torpedo'
+  | 'missile'
   | 'armor'
   | 'repair'
   | 'magnet'
@@ -60,6 +62,7 @@ export function createCombatStats(): CombatStats {
     moveSpeed: GAME_CONFIG.player.maxSpeed,
     secondaryLevel: GAME_CONFIG.playerWeapons.secondary.initialLevel,
     torpedoLevel: GAME_CONFIG.playerWeapons.torpedo.initialLevel,
+    missileLevel: GAME_CONFIG.playerWeapons.missile.initialLevel,
     experienceMultiplier: 1,
     magnetRadiusBonus: 0,
     repairOnKill: 0,

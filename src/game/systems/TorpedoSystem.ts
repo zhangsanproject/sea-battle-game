@@ -45,12 +45,18 @@ export class TorpedoSystem {
       return;
     }
 
-    const torpedoesPerVolley =
-      this.stats.torpedoLevel >= 2 ? Math.min(2, muzzleCount) : 1;
     const config = GAME_CONFIG.playerWeapons.torpedo;
+    const level = this.stats.torpedoLevel;
+    const torpedoesPerVolley =
+      level >= 5
+        ? Math.min(3, muzzleCount)
+        : level >= 3
+          ? Math.min(2, muzzleCount)
+          : 1;
     const damage =
-      config.baseDamage +
-      (this.stats.torpedoLevel - 1) * config.damagePerLevel;
+      config.baseDamage + (level - 1) * config.damagePerLevel;
+    const speed =
+      config.baseSpeed + (level - 1) * config.speedPerLevel;
 
     for (let index = 0; index < torpedoesPerVolley; index += 1) {
       const muzzleIndex = (this.nextTube + index) % muzzleCount;
@@ -61,7 +67,7 @@ export class TorpedoSystem {
 
       this.projectiles.fire(muzzle, this.aimPoint, {
         owner: 'player',
-        speed: config.projectileSpeed,
+        speed,
         damage,
         maxDistance: config.projectileMaxDistance,
         kind: 'torpedo',
@@ -71,10 +77,9 @@ export class TorpedoSystem {
     this.nextTube = (this.nextTube + torpedoesPerVolley) % muzzleCount;
     this.onFire?.();
     this.cooldown = Math.max(
-      0.9,
+      config.minFireInterval,
       config.baseFireInterval -
-        (this.stats.torpedoLevel - 1) *
-          config.fireIntervalPerLevel,
+        (level - 1) * config.fireIntervalPerLevel,
     );
   }
 }

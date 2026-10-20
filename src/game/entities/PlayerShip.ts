@@ -125,8 +125,11 @@ export class PlayerShip {
   }> = [];
   private readonly torpedoGroup = new THREE.Group();
   private readonly torpedoMuzzles: THREE.Object3D[] = [];
+  private readonly missileGroup = new THREE.Group();
+  private readonly missileMuzzles: THREE.Object3D[] = [];
   private secondaryWeaponsBuilt = false;
   private torpedoWeaponsBuilt = false;
+  private missileWeaponsBuilt = false;
   private readonly muzzleFlashes: THREE.Mesh[] = [];
   private readonly muzzleFlashMaterial = new THREE.MeshBasicMaterial({
     color: 0xffcf7a,
@@ -327,6 +330,31 @@ export class PlayerShip {
     return count;
   }
 
+  setMissileWeaponLevel(level: number): void {
+    if (level > 0 && !this.missileWeaponsBuilt) {
+      this.buildMissileLaunchers();
+      this.missileWeaponsBuilt = true;
+    }
+
+    this.missileGroup.visible = level > 0;
+  }
+
+  getMissileMuzzleWorldPositions(out: THREE.Vector3[]): number {
+    this.root.updateMatrixWorld(true);
+
+    let count = 0;
+    for (const muzzle of this.missileMuzzles) {
+      const target = out[count];
+      if (!target) {
+        break;
+      }
+      muzzle.getWorldPosition(target);
+      count += 1;
+    }
+
+    return count;
+  }
+
   heal(amount: number): number {
     if (amount <= 0 || this.status.health <= 0) {
       return 0;
@@ -398,6 +426,7 @@ export class PlayerShip {
     this.muzzleFlashes.length = 0;
     this.secondaryTurrets.length = 0;
     this.torpedoMuzzles.length = 0;
+    this.missileMuzzles.length = 0;
   }
 
   private buildHull(): void {
@@ -979,6 +1008,70 @@ export class PlayerShip {
       }
     });
     this.visual.add(this.torpedoGroup);
+  }
+
+  private buildMissileLaunchers(): void {
+    this.missileGroup.name = 'MissileLaunchers';
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+      color: 0x334952,
+      metalness: 0.62,
+      roughness: 0.4,
+      flatShading: true,
+    });
+    const cellMaterial = new THREE.MeshStandardMaterial({
+      color: 0x111b1f,
+      metalness: 0.55,
+      roughness: 0.58,
+      flatShading: true,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.72,
+      roughness: 0.3,
+    });
+
+    for (const side of [-1, 1]) {
+      const pod = new THREE.Group();
+      pod.position.set(side * 0.88, 1.72, 2.42);
+
+      const mount = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.1, 0.98),
+        goldMaterial,
+      );
+      mount.position.y = 0.05;
+      pod.add(mount);
+
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.3, 0.92),
+        bodyMaterial,
+      );
+      body.position.y = 0.24;
+      pod.add(body);
+
+      for (const cellZ of [-0.23, 0.23]) {
+        const hatch = new THREE.Mesh(
+          new THREE.BoxGeometry(0.3, 0.035, 0.3),
+          cellMaterial,
+        );
+        hatch.position.set(0, 0.405, cellZ);
+        pod.add(hatch);
+
+        const muzzle = new THREE.Object3D();
+        muzzle.position.set(0, 0.47, cellZ);
+        pod.add(muzzle);
+        this.missileMuzzles.push(muzzle);
+      }
+
+      this.missileGroup.add(pod);
+    }
+
+    this.missileGroup.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    this.visual.add(this.missileGroup);
   }
 
   private addBowArmor(heavy: boolean): void {

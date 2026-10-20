@@ -129,6 +129,29 @@ export class SoundManager {
     oscillator.stop(now + 0.36);
   }
 
+  playMissile(): void {
+    const context = this.ensurePlayableContext();
+    if (!context || !this.masterGain) {
+      return;
+    }
+
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    oscillator.type = 'sawtooth';
+    oscillator.frequency.setValueAtTime(320, now);
+    oscillator.frequency.exponentialRampToValueAtTime(860, now + 0.18);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.075, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+
+    oscillator.connect(gain);
+    gain.connect(this.masterGain);
+    oscillator.start(now);
+    oscillator.stop(now + 0.26);
+  }
+
   playHit(): void {
     const context = this.ensurePlayableContext();
     if (!context || !this.masterGain) {

@@ -10,7 +10,7 @@ export type EnemyProfileId =
   | 'torpedoBoat'
   | 'boss';
 
-export type ProjectileKind = 'shell' | 'secondary' | 'torpedo';
+export type ProjectileKind = 'shell' | 'secondary' | 'torpedo' | 'missile';
 
 export interface EnemyProfile {
   id: EnemyProfileId;
@@ -322,12 +322,29 @@ export const GAME_CONFIG = {
     torpedo: {
       initialLevel: 1,
       baseDamage: 46,
-      damagePerLevel: 18,
+      damagePerLevel: 16,
       baseFireInterval: 3.2,
-      fireIntervalPerLevel: 0.35,
+      fireIntervalPerLevel: 0.12,
+      minFireInterval: 2.4,
+      baseSpeed: 16,
+      speedPerLevel: 1.4,
       range: 30,
-      projectileSpeed: 16,
       projectileMaxDistance: 38,
+    },
+    missile: {
+      initialLevel: 1,
+      baseDamage: 30,
+      damagePerLevel: 12,
+      baseFireInterval: 2.8,
+      fireIntervalPerLevel: 0.2,
+      minFireInterval: 1.8,
+      range: 34,
+      projectileSpeed: 26,
+      projectileMaxDistance: 68,
+      verticalLaunchSeconds: 0.3,
+      turnRate: 3.2,
+      splashRadius: 3.8,
+      splashDamageFactor: 0.55,
     },
   },
   spawner: {

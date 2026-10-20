@@ -111,7 +111,7 @@ export class HUD {
         <p class="hud__hint" aria-hidden="true">
           WASD / 方向键移动
           <span class="hud__hint-divider">·</span>
-          主炮自动开火
+          主炮 / 副炮 / 鱼雷 / 导弹自动开火
         </p>
 
         <section class="hud__status" aria-label="战船生命值">

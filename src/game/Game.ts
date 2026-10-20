@@ -18,6 +18,7 @@ import { EnemyAISystem } from './systems/EnemyAISystem';
 import { EffectSystem } from './systems/EffectSystem';
 import { EnemyManager } from './systems/EnemyManager';
 import { EnemySpawner } from './systems/EnemySpawner';
+import { MissileSystem } from './systems/MissileSystem';
 import { PickupSystem } from './systems/PickupSystem';
 import { PlayerControlSystem } from './systems/PlayerControlSystem';
 import { ProjectileSystem } from './systems/ProjectileSystem';
@@ -45,6 +46,7 @@ export class Game {
   private readonly weaponSystem: WeaponSystem;
   private readonly secondaryWeaponSystem: SecondaryWeaponSystem;
   private readonly torpedoSystem: TorpedoSystem;
+  private readonly missileSystem: MissileSystem;
   private readonly progression: ProgressionSystem;
   private readonly hud: HUD;
   private readonly loop: GameLoop;
@@ -90,6 +92,9 @@ export class Game {
     this.playerShip.setTorpedoWeaponLevel(
       this.progression.combatStats.torpedoLevel,
     );
+    this.playerShip.setMissileWeaponLevel(
+      this.progression.combatStats.missileLevel,
+    );
 
     this.hud = new HUD(uiRoot, this.handleRestartRequest, {
       enabled: this.sound.isEnabled,
@@ -118,8 +123,12 @@ export class Game {
       onEnemyKilled: (enemy) => {
         this.handleEnemyKilled(enemy);
       },
-      onEnemyHit: (position) => {
-        this.effectSystem.spawnHit(position);
+      onEnemyHit: (position, _enemy, kind) => {
+        if (kind === 'missile') {
+          this.effectSystem.spawnExplosion(position, 0.9);
+        } else {
+          this.effectSystem.spawnHit(position);
+        }
       },
       onPlayerHit: (damageTaken) => {
         this.handlePlayerHit(damageTaken);
@@ -177,6 +186,14 @@ export class Game {
       this.projectileSystem,
       this.progression.combatStats,
       () => this.sound.playTorpedo(),
+    );
+    this.missileSystem = new MissileSystem(
+      this.playerShip,
+      this.enemyManager,
+      targeting,
+      this.projectileSystem,
+      this.progression.combatStats,
+      () => this.sound.playMissile(),
     );
 
     this.loop = new GameLoop({
@@ -263,6 +280,7 @@ export class Game {
     this.weaponSystem.update(deltaTime);
     this.secondaryWeaponSystem.update(deltaTime);
     this.torpedoSystem.update(deltaTime);
+    this.missileSystem.update(deltaTime);
     this.projectileSystem.update(deltaTime);
 
     if (this.phase !== 'playing') {
@@ -404,6 +422,9 @@ export class Game {
     );
     this.playerShip.setTorpedoWeaponLevel(
       this.progression.combatStats.torpedoLevel,
+    );
+    this.playerShip.setMissileWeaponLevel(
+      this.progression.combatStats.missileLevel,
     );
     this.hud.update(this.playerShip.status);
     this.hud.setExperience(

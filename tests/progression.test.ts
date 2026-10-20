@@ -103,6 +103,7 @@ describe('ProgressionSystem', () => {
       stats.moveSpeed !== before.moveSpeed ||
       stats.secondaryLevel !== before.secondaryLevel ||
       stats.torpedoLevel !== before.torpedoLevel ||
+      stats.missileLevel !== before.missileLevel ||
       stats.experienceMultiplier !== before.experienceMultiplier ||
       stats.magnetRadiusBonus !== before.magnetRadiusBonus ||
       stats.repairOnKill !== before.repairOnKill ||
@@ -175,6 +176,9 @@ describe('ProgressionSystem', () => {
           break;
         case 'torpedo':
           expect(stats.torpedoLevel).toBeGreaterThan(before.torpedoLevel);
+          break;
+        case 'missile':
+          expect(stats.missileLevel).toBeGreaterThan(before.missileLevel);
           break;
         case 'armor':
           expect(player.armor).toBeGreaterThan(beforeArmor);

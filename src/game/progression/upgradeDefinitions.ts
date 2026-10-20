@@ -105,13 +105,28 @@ export const UPGRADE_DEFINITIONS: readonly UpgradeDefinition[] = [
     id: 'torpedo',
     title: '鱼雷发射器',
     tag: '火力',
-    maxLevel: 3,
+    maxLevel: 5,
     getDescription: (stats) =>
       stats.torpedoLevel === 0
         ? '解锁鱼雷发射器：慢速、高伤害的重型鱼雷'
-        : `鱼雷伤害与装填速度提升（Lv.${stats.torpedoLevel} → Lv.${stats.torpedoLevel + 1}）`,
+        : `鱼雷伤害、航速与装填提升（Lv.${stats.torpedoLevel} → Lv.${stats.torpedoLevel + 1}）${
+            stats.torpedoLevel >= 2 ? '，更高等级增加齐射数量' : ''
+          }`,
     apply: ({ stats }) => {
       stats.torpedoLevel += 1;
+    },
+  },
+  {
+    id: 'missile',
+    title: '垂直导弹发射巢',
+    tag: '火力',
+    maxLevel: 5,
+    getDescription: (stats) =>
+      stats.missileLevel === 0
+        ? '解锁垂直发射系统：导弹升空后转向追踪目标，命中后范围爆炸'
+        : `垂直发射导弹伤害与装填提升（Lv.${stats.missileLevel} → Lv.${stats.missileLevel + 1}），高等级增加齐射数量`,
+    apply: ({ stats }) => {
+      stats.missileLevel += 1;
     },
   },
   {

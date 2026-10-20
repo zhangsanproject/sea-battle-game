@@ -53,6 +53,7 @@ export class ProgressionSystem {
     health: 0,
     secondary: 0,
     torpedo: 0,
+    missile: 0,
     armor: 0,
     repair: 0,
     magnet: 0,
