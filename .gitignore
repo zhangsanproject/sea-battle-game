@@ -14,3 +14,7 @@ Thumbs.db
 # 本地工具状态（辅导记录、会话记忆），不入库
 .mentor/
 .workbuddy/
+
+# macOS 压缩包残留（AppleDouble 元数据，会被开发者工具误当成 JS 编译）
+__MACOSX/
+._*

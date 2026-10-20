@@ -259,10 +259,12 @@ Cannot modify Vite config: could not find a valid plugins array
 
 ### 导入抖音开发者工具
 
-1. 执行 `npm run build:minigame`
-2. 开发者工具选择「导入项目」，目录选 `minigame-dist/`
-3. 把 `minigame/project.config.json` 的 `appid` 换成自己的小游戏 AppID，再重新构建一次
-4. 项目类型选「小游戏」，编译
+1. 把 `minigame/project.config.json` 的 `appid` 换成自己的小游戏 AppID
+2. 执行 `npm run build:minigame`
+3. 确认 `minigame-dist/` 里只有 `game.js`、`game.json`、`project.config.json` 三个文件
+4. 开发者工具选择「导入项目」，目录选 `minigame-dist/`，项目类型选「小游戏」，编译
+
+> 开发者工具会编译它扫到的每一个 `.js`。`minigame-dist/` 是构建产物，不要往里放模板解压包或任何手工文件——macOS 的 `__MACOSX/._*.js` 会被当成 JS 解析并报 `SyntaxError: Unexpected character 'u{5}'`。构建脚本会自动清掉杂散文件并打印 `Removed unexpected entry`。
 
 逐项上机验证清单见 `docs/minigame-verify.md`。
 

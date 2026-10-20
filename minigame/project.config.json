@@ -1,10 +1,15 @@
 {
   "appid": "tt0000000000000000",
-  "projectname": "sea-battle-game",
-  "compileType": "game",
+  "projectname": "海战霸主",
+  "douyinProjectType": "native",
   "setting": {
+    "urlCheck": false,
     "es6": true,
+    "postcss": true,
     "minified": true,
-    "urlCheck": false
+    "newFeature": true,
+    "autoCompile": true,
+    "compileHotReLoad": true,
+    "nativeCompile": true
   }
 }

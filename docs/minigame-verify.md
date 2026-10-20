@@ -8,7 +8,16 @@
 
 1. 拿到自己的小游戏 AppID，替换 `minigame/project.config.json` 里的 `appid`。
 2. `npm run build:minigame`
-3. 开发者工具「导入项目」，目录选 `minigame-dist/`，项目类型选「小游戏」。
+3. 确认 `minigame-dist/` 里**只有三个文件**：`game.js`、`game.json`、`project.config.json`。
+4. 开发者工具「导入项目」，目录选 `minigame-dist/`，项目类型选「小游戏」。
+
+### 导入的目录必须是干净的
+
+开发者工具会把它扫到的**每一个 `.js`** 都拿去编译，包括不是我们写的那些。
+
+实际踩过的坑：`__MACOSX/template/_game.js` 报 `SyntaxError: Unexpected character 'u{5}'`。那不是代码错误——是 macOS 打 zip 时留下的 AppleDouble 元数据（文件头 `00 05 16 07`，内容是 `Mac OS X`、`com.apple.*` 之类的二进制），被当成 JS 解析了。同类问题还有：把官方小游戏模板压缩包直接解压进 `minigame-dist/`，会多出一个 `海战/game.js`（926 字节的空白模板），同样会被一起编译。
+
+`npm run build:minigame` 现在会自动删掉这些杂散文件，并打印 `Removed unexpected entry from minigame-dist/: xxx`。看到这行就说明目录被污染过，删完即恢复。**不要手工往 `minigame-dist/` 里放任何东西**，它是构建产物，每次构建都会被重建。
 
 ## A. 能不能起来
 
