@@ -54,7 +54,7 @@ function prepareSceneCanvas(canvas: HTMLCanvasElement): void {
   }
 }
 
-function drawFatalError(canvas: HTMLCanvasElement, message: string): void {
+function drawFatalError(canvas: HTMLCanvasElement, error: unknown): void {
   const runtime = getTtRuntime();
   if (!runtime) {
     return;
@@ -69,19 +69,37 @@ function drawFatalError(canvas: HTMLCanvasElement, message: string): void {
       return;
     }
 
+    const message = error instanceof Error ? error.message : '未知错误';
+    // The devtools console is easy to lose in a screenshot, so the first few
+    // stack frames are painted on screen as well.
+    const frames =
+      error instanceof Error && error.stack
+        ? error.stack
+            .split('\n')
+            .slice(1, 4)
+            .map((line) => line.trim().slice(0, 46))
+        : [];
+
     context.fillStyle = '#071c26';
     context.fillRect(0, 0, info.screenWidth, info.screenHeight);
     context.fillStyle = '#ffd98a';
     context.font = 'bold 22px sans-serif';
     context.textAlign = 'center';
-    context.fillText('海战霸主启动失败', info.screenWidth / 2, 120);
+    context.fillText('海战霸主启动失败', info.screenWidth / 2, 100);
     context.fillStyle = '#cfe9ee';
     context.font = '14px sans-serif';
-    context.fillText(message, info.screenWidth / 2, 160);
+    context.fillText(message, info.screenWidth / 2, 140);
+    context.textAlign = 'left';
+    context.font = '11px monospace';
+    frames.forEach((frame, index) => {
+      context.fillText(frame, 16, 176 + index * 16);
+    });
+    context.textAlign = 'center';
+    context.font = '14px sans-serif';
     context.fillText(
       '请确认设备支持 WebGL2 后重新进入',
       info.screenWidth / 2,
-      186,
+      176 + frames.length * 16 + 28,
     );
   } catch {
     // Nothing else can be shown without a working canvas.
@@ -142,6 +160,9 @@ function bootstrap(): void {
         width: ui.width,
         height: ui.height,
         pixelRatio: ui.pixelRatio,
+        // Touch devices only; never probe window.matchMedia here, the helium
+        // runtime throws "Illegal invocation" for it.
+        maxPixelRatio: 1.5,
       });
 
       const game = new Game({
@@ -156,10 +177,7 @@ function bootstrap(): void {
       activeGame?.dispose();
       activeGame = null;
       console.error('[海战霸主] 抖音小游戏启动失败', error);
-      drawFatalError(
-        screenCanvas,
-        error instanceof Error ? error.message : '未知错误',
-      );
+      drawFatalError(screenCanvas, error);
     } finally {
       starting = false;
     }

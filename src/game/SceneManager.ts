@@ -15,6 +15,44 @@ export interface SceneManagerOptions {
   width?: number;
   height?: number;
   pixelRatio?: number;
+  /**
+   * Upper bound for the pixel ratio. Mini-game runtimes pass this explicitly
+   * so the renderer never has to probe `window` for pointer type.
+   */
+  maxPixelRatio?: number;
+}
+
+/**
+ * Douyin's helium runtime exposes a `window` object, but its `matchMedia` is a
+ * native host method that throws "Illegal invocation" when called outside a
+ * real DOM. Probe defensively instead of trusting the feature check.
+ */
+export function detectMaxPixelRatio(): number {
+  try {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function'
+    ) {
+      return window.matchMedia('(pointer: coarse)').matches ? 1.5 : 2;
+    }
+  } catch {
+    // Fall through to the touch default below.
+  }
+  return 1.5;
+}
+
+function readDevicePixelRatio(): number {
+  try {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.devicePixelRatio === 'number'
+    ) {
+      return window.devicePixelRatio || 1;
+    }
+  } catch {
+    // Fall through.
+  }
+  return 1;
 }
 
 export class SceneManager {
@@ -26,6 +64,7 @@ export class SceneManager {
   private readonly ocean: Ocean;
   private readonly sun: THREE.DirectionalLight;
   private readonly resizeObserver: ResizeObserver | null;
+  private readonly maxPixelRatio: number;
   private readonly cameraTarget = new THREE.Vector3();
   private readonly desiredCameraPosition = new THREE.Vector3();
   private readonly desiredLookTarget = new THREE.Vector3();
@@ -39,6 +78,7 @@ export class SceneManager {
 
   constructor(options: SceneManagerOptions) {
     this.container = options.container ?? null;
+    this.maxPixelRatio = options.maxPixelRatio ?? detectMaxPixelRatio();
     this.scene.background = new THREE.Color(FOG_COLOR);
     this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0044);
 
@@ -196,16 +236,8 @@ export class SceneManager {
       return;
     }
 
-    const coarsePointer =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function'
-        ? window.matchMedia('(pointer: coarse)').matches
-        : true;
-    const maxPixelRatio = coarsePointer ? 1.5 : 2;
-    const devicePixelRatio =
-      pixelRatio ??
-      (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
-    this.basePixelRatio = Math.min(devicePixelRatio, maxPixelRatio);
+    const devicePixelRatio = pixelRatio ?? readDevicePixelRatio();
+    this.basePixelRatio = Math.min(devicePixelRatio, this.maxPixelRatio);
 
     this.renderer.setSize(width, height, false);
     this.applyPixelRatio();

@@ -37,8 +37,13 @@ export class SoundManager implements SoundPlayer {
     }
 
     if (typeof window.addEventListener === 'function') {
-      window.addEventListener('pointerdown', this.handleUserInteraction);
-      window.addEventListener('keydown', this.handleUserInteraction);
+      try {
+        window.addEventListener('pointerdown', this.handleUserInteraction);
+        window.addEventListener('keydown', this.handleUserInteraction);
+      } catch {
+        // Host runtimes (Douyin helium) expose a window shim whose native
+        // methods throw "Illegal invocation"; audio unlock is optional.
+      }
     }
   }
 
@@ -270,11 +275,15 @@ export class SoundManager implements SoundPlayer {
       typeof window !== 'undefined' &&
       typeof window.removeEventListener === 'function'
     ) {
-      window.removeEventListener(
-        'pointerdown',
-        this.handleUserInteraction,
-      );
-      window.removeEventListener('keydown', this.handleUserInteraction);
+      try {
+        window.removeEventListener(
+          'pointerdown',
+          this.handleUserInteraction,
+        );
+        window.removeEventListener('keydown', this.handleUserInteraction);
+      } catch {
+        // See the note in the constructor.
+      }
     }
 
     const context = this.context;
