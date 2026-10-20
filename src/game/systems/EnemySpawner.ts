@@ -61,7 +61,7 @@ export class EnemySpawner {
 
   private spawnNormalEnemy(stage: DangerStage): void {
     const position = this.findSpawnPosition();
-    const baseProfile = this.pickEnemyProfile();
+    const baseProfile = this.pickEnemyProfile(stage);
     const eliteChance = Math.min(
       GAME_CONFIG.spawner.eliteMaxChance,
       GAME_CONFIG.spawner.eliteBaseChance +
@@ -120,12 +120,23 @@ export class EnemySpawner {
     );
   }
 
-  private pickEnemyProfile(): EnemyProfile {
-    const weights = GAME_CONFIG.spawner.spawnWeights;
-    let roll = this.random();
-    let selected = weights[weights.length - 1];
+  private pickEnemyProfile(stage: DangerStage): EnemyProfile {
+    const eligible = GAME_CONFIG.spawner.spawnWeights.filter(
+      (candidate) => stage.tier >= candidate.minTier,
+    );
 
-    for (const candidate of weights) {
+    if (eligible.length === 0) {
+      return ENEMY_PROFILES.raider;
+    }
+
+    const totalWeight = eligible.reduce(
+      (total, candidate) => total + candidate.weight,
+      0,
+    );
+    let roll = this.random() * totalWeight;
+    let selected = eligible[eligible.length - 1];
+
+    for (const candidate of eligible) {
       roll -= candidate.weight;
       if (roll <= 0) {
         selected = candidate;

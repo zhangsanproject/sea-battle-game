@@ -28,16 +28,25 @@ describe('PlayerShip evolution', () => {
     expect(player.evolutionStage).toBe(4);
     expect(player.getMuzzleWorldPositions(muzzles)).toBe(5);
 
-    expect(player.applyEvolution(10)).toBe(false);
+    expect(player.applyEvolution(5)).toBe(false);
     expect(player.evolutionStage).toBe(4);
+
+    const laterThresholds = [6, 8, 10, 13, 16, 20] as const;
+    for (const [index, level] of laterThresholds.entries()) {
+      expect(player.applyEvolution(level)).toBe(true);
+      expect(player.evolutionStage).toBe(5 + index);
+    }
+
+    expect(player.applyEvolution(99)).toBe(false);
+    expect(player.evolutionStage).toBe(10);
 
     player.dispose();
   });
 
   it('resets evolution for a new run', () => {
     const firstPlayer = new PlayerShip();
-    firstPlayer.applyEvolution(4);
-    expect(firstPlayer.evolutionStage).toBe(4);
+    firstPlayer.applyEvolution(20);
+    expect(firstPlayer.evolutionStage).toBe(10);
 
     const secondPlayer = new PlayerShip();
     expect(secondPlayer.evolutionStage).toBe(1);

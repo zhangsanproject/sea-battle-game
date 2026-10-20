@@ -363,6 +363,14 @@ export class EnemyShip {
       this.buildDestroyerDetails();
     } else if (this.profile.id === 'torpedoBoat') {
       this.buildTorpedoBoatDetails();
+    } else if (this.profile.id === 'interceptor') {
+      this.buildInterceptorDetails();
+    } else if (this.profile.id === 'missileBoat') {
+      this.buildMissileBoatDetails();
+    } else if (this.profile.id === 'cruiser') {
+      this.buildCruiserDetails();
+    } else if (this.profile.id === 'artilleryBarge') {
+      this.buildArtilleryBargeDetails();
     }
   }
 
@@ -463,6 +471,279 @@ export class EnemyShip {
       band.position.set(side * 1.05, 0.68, 0.05);
       this.visual.add(band);
     }
+  }
+
+  private buildInterceptorDetails(): void {
+    const ramMaterial = new THREE.MeshStandardMaterial({
+      color: 0x9a6a34,
+      metalness: 0.78,
+      roughness: 0.3,
+    });
+    const finMaterial = new THREE.MeshStandardMaterial({
+      color: 0x4c2a20,
+      metalness: 0.5,
+      roughness: 0.48,
+      flatShading: true,
+    });
+    const engineMaterial = new THREE.MeshStandardMaterial({
+      color: 0xff8a4a,
+      emissive: 0xff3a16,
+      emissiveIntensity: 1.9,
+      metalness: 0.3,
+      roughness: 0.28,
+    });
+
+    const ram = new THREE.Mesh(
+      new THREE.ConeGeometry(0.26, 1.0, 8),
+      ramMaterial,
+    );
+    ram.rotation.x = -Math.PI / 2;
+    ram.position.set(0, 0.55, -4.15);
+    ram.castShadow = true;
+    this.visual.add(ram);
+
+    for (const side of [-1, 1]) {
+      const fin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.05, 0.55),
+        finMaterial,
+      );
+      fin.position.set(side * 1.12, 0.5, 2.9);
+      fin.rotation.z = side * 0.12;
+      fin.castShadow = true;
+      this.visual.add(fin);
+
+      const engine = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.08, 0.06),
+        engineMaterial,
+      );
+      engine.position.set(side * 0.45, 0.45, 3.72);
+      engine.userData.noShadow = true;
+      this.visual.add(engine);
+    }
+  }
+
+  private buildMissileBoatDetails(): void {
+    const podMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2e383c,
+      metalness: 0.62,
+      roughness: 0.4,
+      flatShading: true,
+    });
+    const tubeMaterial = new THREE.MeshStandardMaterial({
+      color: 0x171f22,
+      metalness: 0.6,
+      roughness: 0.5,
+    });
+    const bandMaterial = new THREE.MeshStandardMaterial({
+      color: 0xe08a3a,
+      emissive: 0xa8410d,
+      emissiveIntensity: 1.2,
+      metalness: 0.4,
+      roughness: 0.34,
+    });
+
+    for (const side of [-1, 1]) {
+      const pod = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 0.32, 1.25),
+        podMaterial,
+      );
+      pod.position.set(side * 0.78, 0.88, 0.15);
+      pod.castShadow = true;
+      pod.receiveShadow = true;
+      this.visual.add(pod);
+
+      const band = new THREE.Mesh(
+        new THREE.BoxGeometry(0.58, 0.07, 0.1),
+        bandMaterial,
+      );
+      band.position.set(side * 0.78, 0.98, -0.42);
+      this.visual.add(band);
+
+      for (const offset of [-0.14, 0.14]) {
+        const tube = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.09, 0.09, 0.06, 10),
+          tubeMaterial,
+        );
+        tube.rotation.x = Math.PI / 2;
+        tube.position.set(side * 0.78 + offset, 0.9, -0.5);
+        this.visual.add(tube);
+      }
+    }
+
+    const radarMast = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.04, 0.95, 6),
+      tubeMaterial,
+    );
+    radarMast.position.set(0, 1.65, 1.9);
+    radarMast.castShadow = true;
+    this.visual.add(radarMast);
+
+    const radarBlade = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.05, 0.05),
+      bandMaterial,
+    );
+    radarBlade.position.set(0, 2.02, 1.9);
+    this.visual.add(radarBlade);
+  }
+
+  private buildCruiserDetails(): void {
+    const armorMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2a2528,
+      metalness: 0.66,
+      roughness: 0.4,
+      flatShading: true,
+    });
+    const metalMaterial = new THREE.MeshStandardMaterial({
+      color: 0x3d4247,
+      metalness: 0.74,
+      roughness: 0.32,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb69558,
+      metalness: 0.74,
+      roughness: 0.3,
+    });
+
+    for (const side of [-1, 1]) {
+      const belt = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.42, 2.8),
+        armorMaterial,
+      );
+      belt.position.set(side * 1.72, 0.58, 0.3);
+      belt.castShadow = true;
+      belt.receiveShadow = true;
+      this.visual.add(belt);
+
+      const band = new THREE.Mesh(
+        new THREE.BoxGeometry(0.44, 0.07, 2.9),
+        goldMaterial,
+      );
+      band.position.set(side * 1.72, 0.83, 0.3);
+      band.castShadow = true;
+      this.visual.add(band);
+
+      const mount = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.32, 0.38, 0.16, 8),
+        metalMaterial,
+      );
+      mount.position.set(side * 0.88, 0.62, -0.55);
+      mount.castShadow = true;
+      this.visual.add(mount);
+
+      const barrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.065, 0.08, 1.8, 8),
+        metalMaterial,
+      );
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(side * 0.88, 0.78, -1.62);
+      barrel.castShadow = true;
+      this.visual.add(barrel);
+    }
+
+    for (const side of [-1, 1]) {
+      const funnel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.14, 0.18, 0.72, 8),
+        metalMaterial,
+      );
+      funnel.position.set(side * 0.46, 1.15, 3.1);
+      funnel.castShadow = true;
+      this.visual.add(funnel);
+
+      const ring = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.19, 0.19, 0.06, 8),
+        goldMaterial,
+      );
+      ring.position.set(side * 0.46, 1.3, 3.1);
+      this.visual.add(ring);
+    }
+  }
+
+  private buildArtilleryBargeDetails(): void {
+    const armorMaterial = new THREE.MeshStandardMaterial({
+      color: 0x322e29,
+      metalness: 0.62,
+      roughness: 0.44,
+      flatShading: true,
+    });
+    const metalMaterial = new THREE.MeshStandardMaterial({
+      color: 0x4a453c,
+      metalness: 0.76,
+      roughness: 0.3,
+    });
+    const glowMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffa05a,
+      emissive: 0xc23f12,
+      emissiveIntensity: 1.2,
+      metalness: 0.3,
+      roughness: 0.3,
+    });
+
+    const gunDeck = new THREE.Mesh(
+      new THREE.BoxGeometry(1.9, 0.18, 3.1),
+      armorMaterial,
+    );
+    gunDeck.position.set(0, 0.7, 0.55);
+    gunDeck.castShadow = true;
+    gunDeck.receiveShadow = true;
+    this.visual.add(gunDeck);
+
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.14, 3.1, 10),
+      metalMaterial,
+    );
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.8, -2);
+    barrel.castShadow = true;
+    this.visual.add(barrel);
+
+    const barrelSleeve = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.17, 0.2, 0.8, 10),
+      armorMaterial,
+    );
+    barrelSleeve.rotation.x = Math.PI / 2;
+    barrelSleeve.position.set(0, 0.8, -0.6);
+    barrelSleeve.castShadow = true;
+    this.visual.add(barrelSleeve);
+
+    const muzzleBand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15, 0.15, 0.12, 10),
+      glowMaterial,
+    );
+    muzzleBand.rotation.x = Math.PI / 2;
+    muzzleBand.position.set(0, 0.8, -3.42);
+    this.visual.add(muzzleBand);
+
+    for (const side of [-1, 1]) {
+      const sideArmor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.34, 0.36, 2.2),
+        armorMaterial,
+      );
+      sideArmor.position.set(side * 1.62, 0.6, 0.3);
+      sideArmor.castShadow = true;
+      this.visual.add(sideArmor);
+    }
+
+    const rangefinder = new THREE.Mesh(
+      new THREE.BoxGeometry(0.62, 0.36, 0.55),
+      armorMaterial,
+    );
+    rangefinder.position.set(0, 1.5, 1.9);
+    rangefinder.castShadow = true;
+    this.visual.add(rangefinder);
+
+    const rangefinderGlow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.08, 0.04),
+      glowMaterial,
+    );
+    rangefinderGlow.position.set(0, 1.55, 1.61);
+    this.visual.add(rangefinderGlow);
+
+    const mast = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.045, 1.3, 6),
+      metalMaterial,
+    );
+    mast.position.set(0, 2.1, 1.9);
+    this.visual.add(mast);
   }
 
   private buildThreatDetails(): void {

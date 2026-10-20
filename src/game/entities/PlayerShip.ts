@@ -810,6 +810,36 @@ export class PlayerShip {
       this.addExtraMainBarrel(0);
       this.addBowArmor(true);
       this.addSternGlow();
+      return;
+    }
+
+    if (stage === 5) {
+      this.addRadarArray();
+      return;
+    }
+
+    if (stage === 6) {
+      this.addBeltArmor();
+      return;
+    }
+
+    if (stage === 7) {
+      this.addBowRam();
+      return;
+    }
+
+    if (stage === 8) {
+      this.addAuxiliaryStacks();
+      return;
+    }
+
+    if (stage === 9) {
+      this.addEnergyTrim();
+      return;
+    }
+
+    if (stage === 10) {
+      this.addCommandCrown();
     }
   }
 
@@ -1124,6 +1154,261 @@ export class PlayerShip {
       engine.castShadow = false;
       engine.receiveShadow = false;
       this.visual.add(engine);
+    }
+  }
+
+  private addRadarArray(): void {
+    const metalMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2f434d,
+      metalness: 0.7,
+      roughness: 0.34,
+    });
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0x8fefff,
+      toneMapped: false,
+    });
+
+    const mast = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.035, 0.055, 1.25, 8),
+      metalMaterial,
+    );
+    mast.position.set(0, 2.35, 3.02);
+    mast.castShadow = true;
+    this.visual.add(mast);
+
+    const crossbar = new THREE.Mesh(
+      new THREE.BoxGeometry(1.05, 0.045, 0.045),
+      metalMaterial,
+    );
+    crossbar.position.set(0, 2.72, 3.02);
+    crossbar.castShadow = true;
+    this.visual.add(crossbar);
+
+    const dish = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.3, 0.3, 0.05, 18),
+      metalMaterial,
+    );
+    dish.rotation.x = Math.PI / 2;
+    dish.position.set(0, 2.88, 2.9);
+    dish.castShadow = true;
+    this.visual.add(dish);
+
+    const emitter = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 10, 8),
+      glowMaterial,
+    );
+    emitter.position.set(0, 3.02, 3.02);
+    emitter.userData.noShadow = true;
+    this.visual.add(emitter);
+  }
+
+  private addBeltArmor(): void {
+    const armorMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2c4652,
+      metalness: 0.68,
+      roughness: 0.36,
+      flatShading: true,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.76,
+      roughness: 0.28,
+    });
+
+    for (const side of [-1, 1]) {
+      const belt = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.32, 2.6),
+        armorMaterial,
+      );
+      belt.position.set(side * 2.12, 0.66, 0.2);
+      belt.castShadow = true;
+      belt.receiveShadow = true;
+      this.visual.add(belt);
+
+      const trim = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 0.06, 2.4),
+        goldMaterial,
+      );
+      trim.position.set(side * 2.2, 0.84, 0.2);
+      trim.castShadow = true;
+      this.visual.add(trim);
+    }
+  }
+
+  private addBowRam(): void {
+    const ramMaterial = new THREE.MeshStandardMaterial({
+      color: 0xa8874a,
+      metalness: 0.82,
+      roughness: 0.26,
+    });
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffd889,
+      toneMapped: false,
+    });
+
+    const ram = new THREE.Mesh(
+      new THREE.ConeGeometry(0.3, 1.25, 8),
+      ramMaterial,
+    );
+    ram.rotation.x = -Math.PI / 2;
+    ram.position.set(0, 0.6, -5.3);
+    ram.castShadow = true;
+    this.visual.add(ram);
+
+    const collar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34, 0.34, 0.1, 8),
+      ramMaterial,
+    );
+    collar.rotation.x = Math.PI / 2;
+    collar.position.set(0, 0.6, -4.72);
+    collar.castShadow = true;
+    this.visual.add(collar);
+
+    for (const side of [-1, 1]) {
+      const fin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 0.12, 0.55),
+        ramMaterial,
+      );
+      fin.position.set(side * 0.32, 0.6, -4.9);
+      fin.rotation.y = side * 0.2;
+      fin.castShadow = true;
+      this.visual.add(fin);
+    }
+
+    const tip = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 10, 8),
+      glowMaterial,
+    );
+    tip.position.set(0, 0.6, -5.9);
+    tip.userData.noShadow = true;
+    this.visual.add(tip);
+  }
+
+  private addAuxiliaryStacks(): void {
+    const stackMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2a3438,
+      metalness: 0.7,
+      roughness: 0.36,
+    });
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.74,
+      roughness: 0.3,
+    });
+
+    const sternPlate = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 0.05, 0.9),
+      new THREE.MeshStandardMaterial({
+        color: 0x4a3d2e,
+        metalness: 0.3,
+        roughness: 0.62,
+      }),
+    );
+    sternPlate.position.set(0, 0.79, 4.1);
+    sternPlate.receiveShadow = true;
+    this.visual.add(sternPlate);
+
+    for (const side of [-1, 1]) {
+      const stack = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.13, 0.17, 0.95, 10),
+        stackMaterial,
+      );
+      stack.position.set(side * 1.18, 1.1, 3.92);
+      stack.castShadow = true;
+      stack.receiveShadow = true;
+      this.visual.add(stack);
+
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.18, 0.07, 10),
+        goldMaterial,
+      );
+      band.position.set(side * 1.18, 1.4, 3.92);
+      band.castShadow = true;
+      this.visual.add(band);
+
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.11, 0.12, 0.07, 10),
+        stackMaterial,
+      );
+      cap.position.set(side * 1.18, 1.6, 3.92);
+      cap.castShadow = true;
+      this.visual.add(cap);
+    }
+  }
+
+  private addEnergyTrim(): void {
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0x66e5ff,
+      toneMapped: false,
+    });
+
+    for (const side of [-1, 1]) {
+      const strip = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.03, 4.2),
+        glowMaterial,
+      );
+      strip.position.set(side * 1.82, 0.9, 0.25);
+      strip.userData.noShadow = true;
+      this.visual.add(strip);
+    }
+
+    const sternStrip = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 0.03, 0.04),
+      glowMaterial,
+    );
+    sternStrip.position.set(0, 0.9, 4.3);
+    sternStrip.userData.noShadow = true;
+    this.visual.add(sternStrip);
+
+    const emblem = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.17, 0),
+      glowMaterial,
+    );
+    emblem.position.set(0, 1.0, -4.5);
+    emblem.userData.noShadow = true;
+    this.visual.add(emblem);
+  }
+
+  private addCommandCrown(): void {
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: GOLD_COLOR,
+      metalness: 0.8,
+      roughness: 0.24,
+    });
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffd065,
+      transparent: true,
+      opacity: 0.9,
+      toneMapped: false,
+    });
+
+    const halo = new THREE.Mesh(
+      new THREE.TorusGeometry(0.72, 0.045, 8, 32),
+      glowMaterial,
+    );
+    halo.rotation.x = Math.PI / 2;
+    halo.position.set(0, 3.72, 1.18);
+    halo.userData.noShadow = true;
+    this.visual.add(halo);
+
+    for (const side of [-1, 1]) {
+      const rudder = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.62, 0.6),
+        goldMaterial,
+      );
+      rudder.position.set(side * 1.22, 1.05, 4.45);
+      rudder.rotation.y = side * 0.18;
+      rudder.castShadow = true;
+      this.visual.add(rudder);
+
+      const brace = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 0.06, 0.08),
+        goldMaterial,
+      );
+      brace.position.set(side * 1.0, 0.78, 4.45);
+      brace.rotation.y = side * 0.18;
+      brace.castShadow = true;
+      this.visual.add(brace);
     }
   }
 

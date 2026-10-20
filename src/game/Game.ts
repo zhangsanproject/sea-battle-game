@@ -380,7 +380,9 @@ export class Game {
 
     if (gainedLevels > 0) {
       this.hud.update(this.playerShip.status);
-      this.playerShip.applyEvolution(this.progression.currentLevel);
+      if (this.playerShip.applyEvolution(this.progression.currentLevel)) {
+        this.hud.showKillFeedback('旗舰进化 · 新武装就位');
+      }
     }
 
     if (this.progression.hasPendingLevelUp) {

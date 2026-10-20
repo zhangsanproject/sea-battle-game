@@ -5,9 +5,13 @@
 
 export type EnemyProfileId =
   | 'raider'
+  | 'interceptor'
   | 'gunboat'
   | 'destroyer'
   | 'torpedoBoat'
+  | 'missileBoat'
+  | 'cruiser'
+  | 'artilleryBarge'
   | 'boss';
 
 export type ProjectileKind = 'shell' | 'secondary' | 'torpedo' | 'missile';
@@ -47,6 +51,13 @@ export interface EnemySpawnConfig {
   strafeDirection: 1 | -1;
 }
 
+export interface SpawnWeight {
+  profile: EnemyProfileId;
+  weight: number;
+  /** Enemy type becomes eligible at this danger tier. */
+  minTier: number;
+}
+
 export interface DangerStage {
   tier: number;
   startsAtSeconds: number;
@@ -72,8 +83,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1,
     fireIntervalMultiplier: 1,
     experienceMultiplier: 1,
-    targetEnemyCount: 3,
-    spawnIntervalSeconds: 6,
+    targetEnemyCount: 5,
+    spawnIntervalSeconds: 4.5,
   },
   {
     tier: 2,
@@ -83,8 +94,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.06,
     fireIntervalMultiplier: 0.97,
     experienceMultiplier: 1.08,
-    targetEnemyCount: 3,
-    spawnIntervalSeconds: 5.5,
+    targetEnemyCount: 6,
+    spawnIntervalSeconds: 4.2,
   },
   {
     tier: 3,
@@ -94,8 +105,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.13,
     fireIntervalMultiplier: 0.94,
     experienceMultiplier: 1.16,
-    targetEnemyCount: 4,
-    spawnIntervalSeconds: 5,
+    targetEnemyCount: 7,
+    spawnIntervalSeconds: 3.9,
   },
   {
     tier: 4,
@@ -105,8 +116,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.21,
     fireIntervalMultiplier: 0.9,
     experienceMultiplier: 1.26,
-    targetEnemyCount: 4,
-    spawnIntervalSeconds: 4.5,
+    targetEnemyCount: 8,
+    spawnIntervalSeconds: 3.6,
   },
   {
     tier: 5,
@@ -116,8 +127,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.3,
     fireIntervalMultiplier: 0.86,
     experienceMultiplier: 1.36,
-    targetEnemyCount: 5,
-    spawnIntervalSeconds: 4,
+    targetEnemyCount: 9,
+    spawnIntervalSeconds: 3.3,
   },
   {
     tier: 6,
@@ -127,8 +138,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.4,
     fireIntervalMultiplier: 0.82,
     experienceMultiplier: 1.48,
-    targetEnemyCount: 5,
-    spawnIntervalSeconds: 3.6,
+    targetEnemyCount: 10,
+    spawnIntervalSeconds: 3,
   },
 ];
 
@@ -237,6 +248,110 @@ export const ENEMY_PROFILES: Record<EnemyProfileId, EnemyProfile> = {
     strafeSpeedFactor: 0.6,
     hullColor: 0x6b3b22,
   },
+  interceptor: {
+    id: 'interceptor',
+    maxHealth: 95,
+    armor: 0,
+    maxSpeed: 9.6,
+    acceleration: 15,
+    turnSpeed: 2.8,
+    preferredRange: 8,
+    rangeTolerance: 1.8,
+    attackRange: 17,
+    fireInterval: 1.35,
+    projectileSpeed: 30,
+    projectileDamage: 6,
+    projectileCount: 1,
+    spreadRadians: 0.02,
+    projectileKind: 'secondary',
+    projectileMaxDistance: 22,
+    aimTolerance: 0.12,
+    experienceValue: 40,
+    hitRadius: 2.2,
+    aimPointHeight: 0.9,
+    sinkDuration: 1.3,
+    visualScale: 0.78,
+    strafeSpeedFactor: 0.85,
+    hullColor: 0x7c3122,
+  },
+  missileBoat: {
+    id: 'missileBoat',
+    maxHealth: 170,
+    armor: 1,
+    maxSpeed: 7,
+    acceleration: 10,
+    turnSpeed: 2,
+    preferredRange: 19,
+    rangeTolerance: 3,
+    attackRange: 31,
+    fireInterval: 3.4,
+    projectileSpeed: 20,
+    projectileDamage: 15,
+    projectileCount: 2,
+    spreadRadians: 0.07,
+    projectileKind: 'missile',
+    projectileMaxDistance: 36,
+    aimTolerance: 0.2,
+    experienceValue: 75,
+    hitRadius: 2.8,
+    aimPointHeight: 1,
+    sinkDuration: 1.7,
+    visualScale: 0.98,
+    strafeSpeedFactor: 0.42,
+    hullColor: 0x5b3a21,
+  },
+  cruiser: {
+    id: 'cruiser',
+    maxHealth: 430,
+    armor: 8,
+    maxSpeed: 3.2,
+    acceleration: 4.2,
+    turnSpeed: 0.85,
+    preferredRange: 24,
+    rangeTolerance: 3.5,
+    attackRange: 36,
+    fireInterval: 2.9,
+    projectileSpeed: 25,
+    projectileDamage: 16,
+    projectileCount: 4,
+    spreadRadians: 0.045,
+    projectileKind: 'shell',
+    projectileMaxDistance: 42,
+    aimTolerance: 0.22,
+    experienceValue: 125,
+    hitRadius: 4,
+    aimPointHeight: 1.5,
+    sinkDuration: 2.3,
+    visualScale: 1.5,
+    strafeSpeedFactor: 0.18,
+    hullColor: 0x3b2a2c,
+  },
+  artilleryBarge: {
+    id: 'artilleryBarge',
+    maxHealth: 360,
+    armor: 5,
+    maxSpeed: 2.6,
+    acceleration: 3,
+    turnSpeed: 0.6,
+    preferredRange: 30,
+    rangeTolerance: 4,
+    attackRange: 42,
+    fireInterval: 4,
+    projectileSpeed: 31,
+    projectileDamage: 24,
+    projectileCount: 1,
+    spreadRadians: 0,
+    projectileKind: 'shell',
+    projectileMaxDistance: 48,
+    aimTolerance: 0.1,
+    experienceValue: 140,
+    hitRadius: 4.2,
+    aimPointHeight: 1.6,
+    sinkDuration: 2.5,
+    visualScale: 1.58,
+    strafeSpeedFactor: 0.12,
+    hullColor: 0x3a3530,
+  },
   boss: {
     id: 'boss',
     maxHealth: 620,
@@ -304,7 +419,7 @@ export const GAME_CONFIG = {
     upgradeChoiceCount: 3,
   },
   evolution: {
-    levels: [2, 3, 4] as const,
+    levels: [2, 3, 4, 6, 8, 10, 13, 16, 20] as const,
   },
   playerWeapons: {
     secondary: {
@@ -352,11 +467,15 @@ export const GAME_CONFIG = {
     maxSpawnDistance: 28,
     initialSpawnTimer: 2.5,
     spawnWeights: [
-      { profile: 'raider', weight: 0.4 },
-      { profile: 'gunboat', weight: 0.24 },
-      { profile: 'torpedoBoat', weight: 0.21 },
-      { profile: 'destroyer', weight: 0.15 },
-    ],
+      { profile: 'raider', weight: 0.3, minTier: 1 },
+      { profile: 'interceptor', weight: 0.22, minTier: 1 },
+      { profile: 'gunboat', weight: 0.28, minTier: 1 },
+      { profile: 'torpedoBoat', weight: 0.16, minTier: 2 },
+      { profile: 'missileBoat', weight: 0.14, minTier: 2 },
+      { profile: 'destroyer', weight: 0.12, minTier: 3 },
+      { profile: 'cruiser', weight: 0.08, minTier: 4 },
+      { profile: 'artilleryBarge', weight: 0.06, minTier: 5 },
+    ] satisfies SpawnWeight[],
     initialFireDelayMin: 1.2,
     initialFireDelayMax: 2.8,
     eliteBaseChance: 0.12,
@@ -399,6 +518,13 @@ export const GAME_CONFIG = {
       z: -23,
       initialFireDelay: 2.6,
       strafeDirection: 1,
+    },
+    {
+      profile: 'missileBoat',
+      x: 20,
+      z: 10,
+      initialFireDelay: 3.2,
+      strafeDirection: -1,
     },
   ] satisfies EnemySpawnConfig[],
   input: {

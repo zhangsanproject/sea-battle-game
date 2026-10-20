@@ -20,7 +20,7 @@ describe('EnemySpawner', () => {
     const camera = new PerspectiveCamera();
     camera.position.set(0, 18, 24);
 
-    expect(enemies.getEnemies()).toHaveLength(3);
+    expect(enemies.getEnemies()).toHaveLength(4);
 
     const victim = enemies.getEnemies()[0];
     if (!victim) {
@@ -28,13 +28,13 @@ describe('EnemySpawner', () => {
     }
     victim.takeDamage(999999);
     enemies.update(3, 0, camera);
-    expect(enemies.getEnemies()).toHaveLength(2);
+    expect(enemies.getEnemies()).toHaveLength(3);
 
     const tierOne = danger.getStage(0);
     spawner.update(7, tierOne);
 
     const activeEnemies = enemies.getEnemies();
-    expect(activeEnemies).toHaveLength(3);
+    expect(activeEnemies).toHaveLength(4);
 
     const spawned = activeEnemies[activeEnemies.length - 1];
     if (!spawned) {
@@ -55,13 +55,13 @@ describe('EnemySpawner', () => {
     );
 
     spawner.update(100, tierOne);
-    expect(enemies.getEnemies()).toHaveLength(3);
+    expect(enemies.getEnemies()).toHaveLength(5);
 
     enemies.dispose();
     player.dispose();
   });
 
-  it('can spawn the new destroyer ship type', () => {
+  it('unlocks heavier ship types as the danger tier rises', () => {
     const player = new PlayerShip();
     const enemies = new EnemyManager();
     const danger = new DangerSystem();
@@ -69,19 +69,21 @@ describe('EnemySpawner', () => {
       enemies,
       player,
       danger,
-      () => 0.9,
+      () => 0.95,
     );
     const camera = new PerspectiveCamera();
     camera.position.set(0, 18, 24);
 
-    const victim = enemies.getEnemies()[0];
-    if (!victim) {
-      throw new Error('Expected an initial enemy');
-    }
-    victim.takeDamage(999999);
-    enemies.update(3, 0, camera);
+    const tierTwo = danger.getStage(12);
+    spawner.update(7, tierTwo);
 
-    spawner.update(7, danger.getStage(0));
+    const boss = enemies.getBoss();
+    expect(boss).not.toBeNull();
+    boss?.takeDamage(999999);
+    enemies.update(5, 0, camera);
+    expect(enemies.getBoss()).toBeNull();
+
+    spawner.update(7, danger.getStage(35));
 
     const activeEnemies = enemies.getEnemies();
     const spawned = activeEnemies[activeEnemies.length - 1];
@@ -110,7 +112,7 @@ describe('EnemySpawner', () => {
 
     spawner.update(7, tierTwo);
 
-    expect(enemies.getEnemies()).toHaveLength(4);
+    expect(enemies.getEnemies()).toHaveLength(5);
     const boss = enemies.getBoss();
     expect(boss).not.toBeNull();
     if (!boss) {
@@ -126,9 +128,21 @@ describe('EnemySpawner', () => {
     );
 
     spawner.update(100, tierTwo);
-    expect(enemies.getEnemies()).toHaveLength(4);
+    expect(enemies.getEnemies()).toHaveLength(5);
 
     enemies.dispose();
     player.dispose();
+  });
+
+  it('builds every configured enemy type', () => {
+    const enemies = new EnemyManager();
+
+    for (const profile of Object.values(ENEMY_PROFILES)) {
+      const enemy = enemies.spawnEnemy(profile, 0, 0, 0, 1, 1);
+      expect(enemy).not.toBeNull();
+      expect(enemy?.profile.id).toBe(profile.id);
+    }
+
+    enemies.dispose();
   });
 });
