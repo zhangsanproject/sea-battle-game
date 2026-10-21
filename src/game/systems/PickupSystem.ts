@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GAME_CONFIG } from '../config';
 import type { PlayerShip } from '../entities/PlayerShip';
 
-const PICKUP_POOL_SIZE = 24;
+const PICKUP_POOL_SIZE = 40;
 
 interface PickupSlot {
   mesh: THREE.Mesh;

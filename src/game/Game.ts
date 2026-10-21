@@ -11,6 +11,7 @@ import { PlayerShip } from './entities/PlayerShip';
 import { GameLoop } from './GameLoop';
 import { ProgressionSystem } from './progression/ProgressionSystem';
 import type { UpgradeId } from './progression/types';
+import { submitRun } from './records';
 import type { SceneManager } from './SceneManager';
 import { BossSystem } from './systems/BossSystem';
 import { DangerSystem } from './systems/DangerSystem';
@@ -28,6 +29,11 @@ import { TorpedoSystem } from './systems/TorpedoSystem';
 import { WeaponSystem } from './systems/WeaponSystem';
 
 type GamePhase = 'playing' | 'upgrade' | 'gameover';
+
+/** Slow-motion applied for a few frames on heavy impacts. */
+const HIT_STOP_TIME_SCALE = 0.18;
+/** How long a kill stays part of the combo chain. */
+const STREAK_WINDOW_SECONDS = 3.5;
 
 export interface GameServices {
   sceneManager: SceneManager;
@@ -68,6 +74,13 @@ export class Game {
   private dangerTier = 1;
   private kills = 0;
   private bossKills = 0;
+  private shotsFired = 0;
+  private hits = 0;
+  private damageDealt = 0;
+  private streak = 0;
+  private bestStreak = 0;
+  private streakTimer = 0;
+  private hitStopRemaining = 0;
   private started = false;
   private disposed = false;
 
@@ -123,8 +136,16 @@ export class Game {
       onEnemyKilled: (enemy) => {
         this.handleEnemyKilled(enemy);
       },
-      onEnemyHit: (position, _enemy, kind) => {
+      onEnemyHit: (position, _enemy, kind, damage) => {
         this.effectSystem.spawnImpact(position, kind);
+        this.hits += 1;
+        this.damageDealt += damage;
+        this.hud.showDamageNumber?.(
+          Math.round(damage),
+          position.x,
+          position.y,
+          position.z,
+        );
         if (kind === 'missile' || kind === 'torpedo') {
           this.effectSystem.spawnExplosion(
             position,
@@ -132,6 +153,7 @@ export class Game {
           );
           this.sound.playHit();
           this.sceneManager.shake(0.13, 0.18);
+          this.triggerHitStop(0.05);
         }
       },
       onPlayerHit: (damageTaken) => {
@@ -139,6 +161,11 @@ export class Game {
       },
       onTrailPuff: (position, kind) => {
         this.effectSystem.spawnTrailPuff(position, kind);
+      },
+      onFired: (owner) => {
+        if (owner === 'player') {
+          this.shotsFired += 1;
+        }
       },
     });
     this.sceneManager.add(this.projectileSystem.root);
@@ -275,7 +302,16 @@ export class Game {
       return;
     }
 
-    this.survivalSeconds += deltaTime;
+    // Heavy impacts run the world in slow motion for a few frames.
+    const step = this.consumeHitStop(deltaTime);
+    this.survivalSeconds += step;
+
+    if (this.streakTimer > 0) {
+      this.streakTimer = Math.max(0, this.streakTimer - step);
+      if (this.streakTimer === 0) {
+        this.streak = 0;
+      }
+    }
 
     const dangerStage = this.dangerSystem.getStage(this.survivalSeconds);
     if (dangerStage.tier !== this.dangerTier) {
@@ -283,36 +319,49 @@ export class Game {
       this.hud.setDangerTier(this.dangerTier);
     }
 
-    this.enemySpawner.update(deltaTime, dangerStage);
+    this.enemySpawner.update(step, dangerStage);
     this.inputManager.getMoveVector(this.inputVector);
-    this.playerControl.update(this.inputVector, deltaTime);
-    this.enemyAI.update(deltaTime);
-    this.enemyManager.update(deltaTime, elapsedTime, this.sceneManager.camera);
-    this.bossSystem.update(deltaTime);
+    this.playerControl.update(this.inputVector, step);
+    this.enemyAI.update(step);
+    this.enemyManager.update(step, elapsedTime, this.sceneManager.camera);
+    this.bossSystem.update(step);
 
     if (this.phase !== 'playing') {
       return;
     }
 
-    this.weaponSystem.update(deltaTime);
-    this.secondaryWeaponSystem.update(deltaTime);
-    this.torpedoSystem.update(deltaTime);
-    this.missileSystem.update(deltaTime);
-    this.projectileSystem.update(deltaTime);
+    this.weaponSystem.update(step);
+    this.secondaryWeaponSystem.update(step);
+    this.torpedoSystem.update(step);
+    this.missileSystem.update(step);
+    this.projectileSystem.update(step);
 
     if (this.phase !== 'playing') {
       return;
     }
 
-    this.effectSystem.update(deltaTime);
+    this.effectSystem.update(step);
     this.syncBossHud();
     this.pickupSystem.update(
-      deltaTime,
+      step,
       elapsedTime,
       this.playerShip,
       this.progression.combatStats.magnetRadiusBonus,
     );
-    this.playerShip.updateVisual(elapsedTime, deltaTime);
+    this.playerShip.updateVisual(elapsedTime, step);
+  }
+
+  private triggerHitStop(seconds: number): void {
+    this.hitStopRemaining = Math.max(this.hitStopRemaining, seconds);
+  }
+
+  private consumeHitStop(deltaTime: number): number {
+    if (this.hitStopRemaining <= 0) {
+      return deltaTime;
+    }
+
+    this.hitStopRemaining = Math.max(0, this.hitStopRemaining - deltaTime);
+    return deltaTime * HIT_STOP_TIME_SCALE;
   }
 
   private handleEnemyKilled(enemy: EnemyShip): void {
@@ -321,6 +370,9 @@ export class Game {
     }
 
     this.kills += 1;
+    this.streak += 1;
+    this.streakTimer = STREAK_WINDOW_SECONDS;
+    this.bestStreak = Math.max(this.bestStreak, this.streak);
     this.pickupSystem.spawn(enemy.root.position, enemy.experienceValue);
     this.effectSystem.spawnExplosion(
       enemy.root.position,
@@ -345,6 +397,7 @@ export class Game {
       this.hud.hideBossHealth();
       this.bossSystem.cancelWarning();
       this.hud.showKillFeedback('深海霸主击沉');
+      this.triggerHitStop(0.12);
     } else if (enemy.isElite) {
       this.hud.showKillFeedback('精英敌舰击沉');
     } else {
@@ -484,11 +537,28 @@ export class Game {
     this.bossSystem.cancelWarning();
     this.hud.hideBossHealth();
     this.hud.update(this.playerShip.status);
+
+    // The record is settled before the panel is drawn so it can show the
+    // player the number they just failed to beat.
+    const result = submitRun(this.platform.storage, {
+      survivalSeconds: this.survivalSeconds,
+      kills: this.kills,
+      level: this.progression.currentLevel,
+      bossKills: this.bossKills,
+      bestStreak: this.bestStreak,
+    });
+
     this.hud.showGameOver({
       survivalSeconds: this.survivalSeconds,
       kills: this.kills,
       level: this.progression.currentLevel,
       bossKills: this.bossKills,
+      damageDealt: Math.round(this.damageDealt),
+      accuracy: this.shotsFired > 0 ? this.hits / this.shotsFired : 0,
+      bestStreak: this.bestStreak,
+      bestKills: result.records.bestKills,
+      isNewRecord: result.isNewRecord,
+      totalRuns: result.records.totalRuns,
     });
   }
 
@@ -498,7 +568,8 @@ export class Game {
     }
 
     this.inputManager.reset();
-    this.loop.stop();
+    // Keep rendering so the pause overlay can be composited over the scene.
+    this.loop.setPaused(true);
   };
 
   private readonly handleResume = (): void => {
@@ -507,6 +578,10 @@ export class Game {
     }
 
     this.inputManager.reset();
-    this.loop.start();
+    this.loop.setPaused(false);
+
+    if (!this.loop.isPaused) {
+      this.loop.start();
+    }
   };
 }

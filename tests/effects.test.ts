@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { EffectSystem } from '../src/game/systems/EffectSystem';
+import { EffectSystem, PARTICLE_POOL_SIZE } from '../src/game/systems/EffectSystem';
 
 describe('EffectSystem', () => {
   it('pools hit and explosion particles and expires them', () => {
@@ -28,7 +28,7 @@ describe('EffectSystem', () => {
     }
 
     // The pool is the hard cap: bursts beyond it are dropped, not allocated.
-    expect(effects.getActiveCount()).toBeLessThanOrEqual(128);
+    expect(effects.getActiveCount()).toBeLessThanOrEqual(PARTICLE_POOL_SIZE);
 
     effects.dispose();
   });

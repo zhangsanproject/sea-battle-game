@@ -1,4 +1,5 @@
-import { Vector2 } from 'three';
+import { Vector2, Vector3 } from 'three';
+import type { PerspectiveCamera } from 'three';
 import { GAME_CONFIG } from '../game/config';
 import type { PlayerStatus } from '../game/entities/PlayerShip';
 import type { UpgradeId, UpgradeOffer } from '../game/progression/types';
@@ -22,10 +23,31 @@ interface Rect {
   height: number;
 }
 
+/** Owned by the platform, so the button and a phone call share one path. */
+export interface PauseControls {
+  isPaused(): boolean;
+  toggle(): boolean;
+}
+
 export interface MiniGameUiOptions {
   sceneCanvas: HTMLCanvasElement;
   soundControls: SoundControls;
+  pauseControls?: PauseControls;
   onRestart: () => void;
+  /** Called once on the first touch; used to unlock the audio context. */
+  onFirstTouch?: () => void;
+  /** Extra line under the compliance notice, e.g. the operator name. */
+  operatorLine?: string;
+}
+
+interface DamageNumber {
+  x: number;
+  y: number;
+  driftY: number;
+  life: number;
+  ttl: number;
+  amount: number;
+  critical: boolean;
 }
 
 const FONT_FAMILY =
@@ -36,6 +58,40 @@ const TEXT = '#d9edf1';
 const MUTED = 'rgba(203, 231, 236, 0.62)';
 const PANEL = 'rgba(4, 22, 31, 0.72)';
 const DANGER = '#ff7052';
+const MAX_DAMAGE_NUMBERS = 24;
+
+/** Standard four-line health advisory required on the launch screen. */
+const HEALTH_ADVISORY = [
+  '抵制不良游戏，拒绝盗版游戏。',
+  '注意自我保护，谨防受骗上当。',
+  '适度游戏益脑，沉迷游戏伤身。',
+  '合理安排时间，享受健康生活。',
+];
+
+const AGE_NOTICE = '适龄提示：本游戏适合 12 周岁以上用户。';
+
+const PRIVACY_SECTIONS: Array<[string, string]> = [
+  [
+    '我们不收集什么',
+    '本游戏不需要登录，也不收集姓名、手机号、身份证号、通讯录、位置等个人信息。',
+  ],
+  [
+    '保存在设备本地的数据',
+    '音效开关，以及战绩记录（最高击沉数、最长存活时间、最高等级、总对局数）。这些数据只存在本机，不会上传。',
+  ],
+  [
+    '运行时会读取的信息',
+    '屏幕尺寸、像素比与安全区，仅用于界面适配与画质调节，不用于识别你的身份。',
+  ],
+  [
+    '第三方共享',
+    '不接入广告或统计 SDK，不与任何第三方共享数据。',
+  ],
+  [
+    '如何清除',
+    '在抖音「我 - 设置 - 清除缓存」中清理小游戏数据，即可删除上述本地记录。',
+  ],
+];
 
 /**
  * Canvas HUD and touch input for the Douyin mini-game build.
@@ -52,7 +108,10 @@ export class MiniGameUi implements GameHud, InputSource {
   private readonly context: CanvasRenderingContext2D;
   private readonly runtime: TtRuntime | null;
   private readonly soundControls: SoundControls;
+  private readonly pauseControls: PauseControls | null;
   private readonly onRestart: () => void;
+  private readonly onFirstTouch: (() => void) | null;
+  private readonly operatorLine: string | null;
   private readonly safeTop: number;
   private readonly safeBottom: number;
   private readonly defaultJoystickX: number;
@@ -73,6 +132,7 @@ export class MiniGameUi implements GameHud, InputSource {
   private toastTime = 0;
   private damageFlashTime = 0;
   private soundEnabled: boolean;
+  private firstTouchHandled = false;
 
   private upgradeOffers: readonly UpgradeOffer[] = [];
   private upgradeLevel = 1;
@@ -82,6 +142,20 @@ export class MiniGameUi implements GameHud, InputSource {
   private gameOverStats: GameOverStats | null = null;
   private restartRect: Rect | null = null;
   private soundRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
+  private pauseRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
+  private pauseResumeRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
+
+  private camera: PerspectiveCamera | null = null;
+  private readonly projected = new Vector3();
+  private damageNumbers: DamageNumber[] = [];
+
+  private noticeActive = false;
+  private noticePrivacyOpen = false;
+  private noticeStartHandler: (() => void) | null = null;
+  private noticeFrame: number | null = null;
+  private noticeStartRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
+  private noticePrivacyRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
+  private noticeBackRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
 
   private inputEnabled = true;
   private activeTouchId: number | null = null;
@@ -93,7 +167,10 @@ export class MiniGameUi implements GameHud, InputSource {
     this.canvas = canvas;
     this.sceneCanvas = options.sceneCanvas;
     this.soundControls = options.soundControls;
+    this.pauseControls = options.pauseControls ?? null;
     this.onRestart = options.onRestart;
+    this.onFirstTouch = options.onFirstTouch ?? null;
+    this.operatorLine = options.operatorLine ?? null;
     this.runtime = getTtRuntime();
     this.soundEnabled = options.soundControls.enabled;
 
@@ -139,8 +216,13 @@ export class MiniGameUi implements GameHud, InputSource {
     return 0;
   }
 
+  /** The floating damage text needs the live camera to project world space. */
+  attachCamera(camera: PerspectiveCamera): void {
+    this.camera = camera;
+  }
+
   getMoveVector(out: Vector2): Vector2 {
-    if (!this.inputEnabled) {
+    if (!this.inputEnabled || this.isPaused()) {
       return out.set(0, 0);
     }
 
@@ -207,6 +289,42 @@ export class MiniGameUi implements GameHud, InputSource {
     this.toastTime = 1.25;
   }
 
+  showDamageNumber(amount: number, x: number, y: number, z: number): void {
+    const camera = this.camera;
+    if (!camera || this.disposed) {
+      return;
+    }
+
+    camera.updateMatrixWorld();
+    this.projected.set(x, y, z).project(camera);
+
+    // Behind the camera or past the far plane: nothing sensible to draw.
+    if (this.projected.z > 1) {
+      return;
+    }
+
+    const screenX = (this.projected.x * 0.5 + 0.5) * this.width;
+    const screenY = (-this.projected.y * 0.5 + 0.5) * this.height;
+
+    if (screenX < -40 || screenX > this.width + 40) {
+      return;
+    }
+
+    if (this.damageNumbers.length >= MAX_DAMAGE_NUMBERS) {
+      this.damageNumbers.shift();
+    }
+
+    this.damageNumbers.push({
+      x: screenX + (Math.random() - 0.5) * 16,
+      y: screenY,
+      driftY: -40 - Math.random() * 16,
+      life: 0.85,
+      ttl: 0.85,
+      amount: Math.max(1, Math.round(amount)),
+      critical: amount >= 40,
+    });
+  }
+
   showUpgradeChoices(
     offers: readonly UpgradeOffer[],
     level: number,
@@ -239,14 +357,85 @@ export class MiniGameUi implements GameHud, InputSource {
     this.restartRect = null;
   }
 
+  /**
+   * Draws the launch notice required before the game itself may start.
+   * The caller starts the real game from the callback, which keeps the
+   * compliance gate out of the game logic.
+   */
+  showComplianceNotice(onStart: () => void): void {
+    if (this.disposed) {
+      this.safeStart();
+      return;
+    }
+
+    this.noticeActive = true;
+    this.noticePrivacyOpen = false;
+    this.noticeStartHandler = onStart;
+
+    if (this.noticeFrame !== null) {
+      return;
+    }
+
+    this.noticeLoop();
+  }
+
+  private safeStart(): void {
+    const start = this.noticeStartHandler;
+    this.noticeStartHandler = null;
+    start?.();
+  }
+
+  private readonly noticeLoop = (): void => {
+    if (this.disposed || !this.noticeActive) {
+      this.noticeFrame = null;
+      return;
+    }
+
+    this.drawComplianceNotice();
+
+    const scheduler = globalThis as unknown as {
+      requestAnimationFrame?: (callback: (time: number) => void) => number;
+    };
+
+    if (typeof scheduler.requestAnimationFrame !== 'function') {
+      this.noticeFrame = null;
+      return;
+    }
+
+    this.noticeFrame = scheduler.requestAnimationFrame(this.noticeLoop);
+  };
+
+  private dismissNotice(): void {
+    this.noticeActive = false;
+    this.noticePrivacyOpen = false;
+
+    if (this.noticeFrame !== null) {
+      const scheduler = globalThis as unknown as {
+        cancelAnimationFrame?: (handle: number) => void;
+      };
+      scheduler.cancelAnimationFrame?.(this.noticeFrame);
+      this.noticeFrame = null;
+    }
+  }
+
+  private isPaused(): boolean {
+    return this.pauseControls?.isPaused() ?? false;
+  }
+
   render(deltaTime: number): void {
     if (this.disposed) {
+      return;
+    }
+
+    if (this.noticeActive) {
+      this.drawComplianceNotice();
       return;
     }
 
     const ctx = this.context;
     this.toastTime = Math.max(0, this.toastTime - deltaTime);
     this.damageFlashTime = Math.max(0, this.damageFlashTime - deltaTime);
+    this.updateDamageNumbers(deltaTime);
 
     ctx.clearRect(0, 0, this.width, this.height);
 
@@ -262,6 +451,8 @@ export class MiniGameUi implements GameHud, InputSource {
     this.drawStatus();
     this.drawBoss();
     this.drawToast();
+    this.drawCriticalVignette();
+    this.drawDamageNumbers();
 
     if (this.damageFlashTime > 0) {
       ctx.fillStyle = `rgba(210, 42, 24, ${this.damageFlashTime * 0.5})`;
@@ -279,6 +470,10 @@ export class MiniGameUi implements GameHud, InputSource {
     if (this.gameOverStats) {
       this.drawGameOverOverlay(this.gameOverStats);
     }
+
+    if (this.isPaused()) {
+      this.drawPauseOverlay();
+    }
   }
 
   dispose(): void {
@@ -286,11 +481,92 @@ export class MiniGameUi implements GameHud, InputSource {
       return;
     }
     this.disposed = true;
+    this.dismissNotice();
     this.reset();
+    this.damageNumbers = [];
     this.runtime?.offTouchStart?.(this.handleTouchStart);
     this.runtime?.offTouchMove?.(this.handleTouchMove);
     this.runtime?.offTouchEnd?.(this.handleTouchEnd);
     this.runtime?.offTouchCancel?.(this.handleTouchCancel);
+  }
+
+  private updateDamageNumbers(deltaTime: number): void {
+    if (this.damageNumbers.length === 0) {
+      return;
+    }
+
+    const remaining: DamageNumber[] = [];
+    for (const entry of this.damageNumbers) {
+      entry.life -= deltaTime;
+      if (entry.life <= 0) {
+        continue;
+      }
+      entry.y += entry.driftY * deltaTime;
+      remaining.push(entry);
+    }
+    this.damageNumbers = remaining;
+  }
+
+  private drawDamageNumbers(): void {
+    if (this.damageNumbers.length === 0) {
+      return;
+    }
+
+    const ctx = this.context;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+
+    for (const entry of this.damageNumbers) {
+      const progress = Math.max(0, entry.life / entry.ttl);
+      const pop = 1 + (1 - progress) * 0.25;
+      const size = (entry.critical ? 21 : 16) * pop;
+
+      ctx.globalAlpha = Math.min(1, progress * 1.6);
+      ctx.shadowColor = 'rgba(0, 14, 20, 0.85)';
+      ctx.shadowBlur = 8;
+      this.text(
+        String(entry.amount),
+        entry.x,
+        entry.y,
+        size,
+        entry.critical ? '#ffd166' : GOLD_BRIGHT,
+        'bold',
+      );
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  private drawCriticalVignette(): void {
+    const ratio = this.health / this.maxHealth;
+    if (ratio > 0.3 || this.gameOverStats || this.upgradeHandler) {
+      return;
+    }
+
+    const ctx = this.context;
+    const centerX = this.width / 2;
+    const centerY = this.height / 2;
+    const inner = Math.min(this.width, this.height) * 0.34;
+    const outer = Math.max(this.width, this.height) * 0.78;
+    const pulse = 0.3 + Math.sin(Date.now() / 260) * 0.14;
+
+    const gradient = ctx.createRadialGradient(
+      centerX,
+      centerY,
+      inner,
+      centerX,
+      centerY,
+      outer,
+    );
+    gradient.addColorStop(0, 'rgba(160, 22, 12, 0)');
+    gradient.addColorStop(1, `rgba(178, 26, 14, ${pulse.toFixed(3)})`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    ctx.textAlign = 'center';
+    this.text('船体严重受损', centerX, this.safeTop + 150, 12, DANGER, 'bold');
   }
 
   private drawStatus(): void {
@@ -397,6 +673,258 @@ export class MiniGameUi implements GameHud, InputSource {
       11,
       this.soundEnabled ? TEXT : MUTED,
     );
+
+    if (this.pauseControls) {
+      const pauseWidth = 38;
+      this.pauseRect = {
+        x: this.soundRect.x - 8 - pauseWidth,
+        y: this.soundRect.y,
+        width: pauseWidth,
+        height: buttonHeight,
+      };
+      this.fillRoundRect(
+        this.pauseRect.x,
+        this.pauseRect.y,
+        pauseWidth,
+        buttonHeight,
+        14,
+        'rgba(4, 22, 31, 0.66)',
+      );
+      this.strokeRoundRect(
+        this.pauseRect.x,
+        this.pauseRect.y,
+        pauseWidth,
+        buttonHeight,
+        14,
+        'rgba(226, 191, 120, 0.32)',
+      );
+      const iconY = this.pauseRect.y + buttonHeight / 2;
+      const iconX = this.pauseRect.x + pauseWidth / 2;
+      ctx.fillStyle = TEXT;
+      ctx.fillRect(iconX - 5, iconY - 6, 3.5, 12);
+      ctx.fillRect(iconX + 1.5, iconY - 6, 3.5, 12);
+    } else {
+      this.pauseRect = { x: 0, y: 0, width: 0, height: 0 };
+    }
+  }
+
+  private drawPauseOverlay(): void {
+    const ctx = this.context;
+    ctx.fillStyle = 'rgba(2, 14, 21, 0.72)';
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    const centerX = this.width / 2;
+    const panelWidth = Math.min(300, this.width - 56);
+    const panelHeight = 186;
+    const panelX = (this.width - panelWidth) / 2;
+    const panelY = Math.max(
+      this.safeTop + 80,
+      (this.height - panelHeight) / 2,
+    );
+
+    this.fillRoundRect(
+      panelX,
+      panelY,
+      panelWidth,
+      panelHeight,
+      18,
+      'rgba(6, 27, 37, 0.96)',
+    );
+    this.strokeRoundRect(
+      panelX,
+      panelY,
+      panelWidth,
+      panelHeight,
+      18,
+      'rgba(226, 191, 120, 0.45)',
+    );
+
+    ctx.textAlign = 'center';
+    this.text('PAUSED', centerX, panelY + 36, 11, 'rgba(226, 191, 120, 0.62)');
+    this.text('战斗暂停', centerX, panelY + 70, 22, GOLD_BRIGHT, 'bold');
+    this.text('海域暂时平静', centerX, panelY + 94, 11, MUTED);
+
+    const buttonWidth = panelWidth - 48;
+    const buttonHeight = 44;
+    this.pauseResumeRect = {
+      x: panelX + 24,
+      y: panelY + panelHeight - 66,
+      width: buttonWidth,
+      height: buttonHeight,
+    };
+    this.fillRoundRect(
+      this.pauseResumeRect.x,
+      this.pauseResumeRect.y,
+      buttonWidth,
+      buttonHeight,
+      22,
+      '#d8b978',
+    );
+    this.text(
+      '继续战斗',
+      centerX,
+      this.pauseResumeRect.y + 28,
+      15,
+      '#122b33',
+      'bold',
+    );
+  }
+
+  private drawComplianceNotice(): void {
+    const ctx = this.context;
+
+    // The 3D scene does not exist yet, so this screen paints its own backdrop.
+    const backdrop = ctx.createLinearGradient(0, 0, 0, this.height);
+    backdrop.addColorStop(0, '#08222e');
+    backdrop.addColorStop(0.55, '#0b3141');
+    backdrop.addColorStop(1, '#04151d');
+    ctx.fillStyle = backdrop;
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    const centerX = this.width / 2;
+    const top = this.safeTop + 52;
+
+    ctx.textAlign = 'center';
+    this.text('SEA OVERLORD', centerX, top, 11, 'rgba(226, 191, 120, 0.66)');
+    this.text('海战霸主', centerX, top + 40, 32, GOLD_BRIGHT, 'bold');
+    this.text('海域 01 · 生存射击', centerX, top + 64, 12, MUTED);
+
+    if (this.noticePrivacyOpen) {
+      this.drawPrivacyPanel(top);
+      return;
+    }
+
+    const noticeTop = top + 104;
+    const noticeWidth = Math.min(320, this.width - 48);
+    const noticeHeight = 172;
+    const noticeX = (this.width - noticeWidth) / 2;
+
+    this.fillRoundRect(
+      noticeX,
+      noticeTop,
+      noticeWidth,
+      noticeHeight,
+      16,
+      'rgba(4, 22, 31, 0.72)',
+    );
+    this.strokeRoundRect(
+      noticeX,
+      noticeTop,
+      noticeWidth,
+      noticeHeight,
+      16,
+      'rgba(226, 191, 120, 0.28)',
+    );
+
+    ctx.textAlign = 'left';
+    this.text('健康游戏忠告', noticeX + 20, noticeTop + 30, 13, GOLD, 'bold');
+    HEALTH_ADVISORY.forEach((line, index) => {
+      this.text(line, noticeX + 20, noticeTop + 58 + index * 24, 12, TEXT);
+    });
+
+    ctx.textAlign = 'center';
+    this.text(AGE_NOTICE, centerX, noticeTop + noticeHeight + 26, 11, MUTED);
+
+    if (this.operatorLine) {
+      this.text(this.operatorLine, centerX, noticeTop + noticeHeight + 46, 10, MUTED);
+    }
+
+    const buttonWidth = Math.min(300, this.width - 64);
+    const buttonHeight = 48;
+    const buttonX = (this.width - buttonWidth) / 2;
+    const buttonY = Math.min(
+      this.height - this.safeBottom - 132,
+      noticeTop + noticeHeight + 78,
+    );
+
+    this.noticeStartRect = {
+      x: buttonX,
+      y: buttonY,
+      width: buttonWidth,
+      height: buttonHeight,
+    };
+    this.fillRoundRect(buttonX, buttonY, buttonWidth, buttonHeight, 24, '#d8b978');
+    this.text('开始游戏', centerX, buttonY + 31, 17, '#122b33', 'bold');
+
+    const privacyWidth = 150;
+    const privacyHeight = 34;
+    this.noticePrivacyRect = {
+      x: (this.width - privacyWidth) / 2,
+      y: buttonY + buttonHeight + 14,
+      width: privacyWidth,
+      height: privacyHeight,
+    };
+    this.strokeRoundRect(
+      this.noticePrivacyRect.x,
+      this.noticePrivacyRect.y,
+      privacyWidth,
+      privacyHeight,
+      17,
+      'rgba(226, 191, 120, 0.4)',
+    );
+    this.text(
+      '隐私政策',
+      centerX,
+      this.noticePrivacyRect.y + 22,
+      12,
+      GOLD,
+    );
+  }
+
+  private drawPrivacyPanel(top: number): void {
+    const ctx = this.context;
+    const centerX = this.width / 2;
+
+    ctx.textAlign = 'center';
+    this.text('隐私政策', centerX, top + 76, 20, GOLD_BRIGHT, 'bold');
+
+    let cursorY = top + 112;
+    const left = 28;
+    const maxWidth = this.width - 56;
+
+    ctx.textAlign = 'left';
+    for (const [title, body] of PRIVACY_SECTIONS) {
+      this.text(title, left, cursorY, 12, GOLD, 'bold');
+      cursorY += 20;
+      const lines = this.wrapText(body, maxWidth, 11);
+      for (const line of lines) {
+        this.text(line, left, cursorY, 11, MUTED);
+        cursorY += 17;
+      }
+      cursorY += 10;
+
+      if (cursorY > this.height - this.safeBottom - 120) {
+        break;
+      }
+    }
+
+    const buttonWidth = Math.min(260, this.width - 80);
+    const buttonHeight = 44;
+    const buttonY = this.height - this.safeBottom - 84;
+    this.noticeBackRect = {
+      x: (this.width - buttonWidth) / 2,
+      y: buttonY,
+      width: buttonWidth,
+      height: buttonHeight,
+    };
+    this.fillRoundRect(
+      this.noticeBackRect.x,
+      buttonY,
+      buttonWidth,
+      buttonHeight,
+      22,
+      'rgba(226, 191, 120, 0.16)',
+    );
+    this.strokeRoundRect(
+      this.noticeBackRect.x,
+      buttonY,
+      buttonWidth,
+      buttonHeight,
+      22,
+      'rgba(226, 191, 120, 0.5)',
+    );
+    ctx.textAlign = 'center';
+    this.text('返回', centerX, buttonY + 28, 14, TEXT, 'bold');
   }
 
   private drawBoss(): void {
@@ -614,10 +1142,10 @@ export class MiniGameUi implements GameHud, InputSource {
     ctx.fillRect(0, 0, this.width, this.height);
 
     const panelWidth = this.width - 48;
-    const panelHeight = 318;
+    const panelHeight = 404;
     const panelX = 24;
     const panelY = Math.max(
-      this.safeTop + 40,
+      this.safeTop + 24,
       (this.height - panelHeight) / 2,
     );
 
@@ -643,36 +1171,59 @@ export class MiniGameUi implements GameHud, InputSource {
     this.text(
       'FLAGSHIP LOST',
       centerX,
-      panelY + 40,
+      panelY + 34,
       11,
       'rgba(226, 191, 120, 0.62)',
     );
-    this.text('旗舰战沉', centerX, panelY + 74, 25, GOLD_BRIGHT, 'bold');
-    this.text('海域 01 · 战斗结束', centerX, panelY + 98, 11, MUTED);
+    this.text('旗舰战沉', centerX, panelY + 66, 25, GOLD_BRIGHT, 'bold');
+    this.text('海域 01 · 战斗结束', centerX, panelY + 88, 11, MUTED);
+
+    if (stats.isNewRecord) {
+      const badgeWidth = 96;
+      const badgeHeight = 24;
+      const badgeX = centerX - badgeWidth / 2;
+      const badgeY = panelY + 100;
+      this.fillRoundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12, 'rgba(216, 185, 120, 0.22)');
+      this.strokeRoundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12, 'rgba(255, 226, 161, 0.7)');
+      this.text('★ 新纪录', centerX, badgeY + 17, 12, GOLD_BRIGHT, 'bold');
+    }
+
+    const accuracyText =
+      stats.accuracy === undefined || stats.accuracy <= 0
+        ? '—'
+        : `${Math.round(stats.accuracy * 100)}%`;
 
     const rows: Array<[string, string]> = [
       ['存活时间', this.formatDuration(stats.survivalSeconds)],
       ['击沉敌舰', String(stats.kills)],
       ['最高等级', String(stats.level)],
       ['Boss 击杀', String(stats.bossKills)],
+      ['总伤害', stats.damageDealt === undefined ? '—' : String(stats.damageDealt)],
+      ['命中率', accuracyText],
+      ['最高连击', stats.bestStreak === undefined ? '—' : String(stats.bestStreak)],
+      [
+        '历史最佳',
+        stats.bestKills === undefined ? '—' : `${stats.bestKills} 舰`,
+      ],
     ];
 
+    const rowsTop = stats.isNewRecord ? panelY + 148 : panelY + 128;
     rows.forEach(([label, value], index) => {
       const column = index % 2;
       const row = Math.floor(index / 2);
       const x = panelX + 24 + column * (panelWidth - 48) / 2;
-      const y = panelY + 142 + row * 52;
+      const y = rowsTop + row * 48;
 
       ctx.textAlign = 'left';
-      this.text(label, x, y, 11, MUTED);
-      this.text(value, x, y + 22, 18, TEXT, 'bold');
+      this.text(label, x, y, 10, MUTED);
+      this.text(value, x, y + 20, 16, TEXT, 'bold');
     });
 
     const buttonWidth = panelWidth - 48;
     const buttonHeight = 46;
     this.restartRect = {
       x: panelX + 24,
-      y: panelY + panelHeight - 70,
+      y: panelY + panelHeight - 68,
       width: buttonWidth,
       height: buttonHeight,
     };
@@ -794,6 +1345,31 @@ export class MiniGameUi implements GameHud, InputSource {
     ctx.fillText(value, x, y);
   }
 
+  private wrapText(value: string, maxWidth: number, size: number): string[] {
+    const ctx = this.context;
+    ctx.font = `normal ${size}px ${FONT_FAMILY}`;
+
+    const chars = Array.from(value);
+    const lines: string[] = [];
+    let line = '';
+
+    for (const char of chars) {
+      const candidate = line + char;
+      if (ctx.measureText(candidate).width > maxWidth && line.length > 0) {
+        lines.push(line);
+        line = char;
+      } else {
+        line = candidate;
+      }
+    }
+
+    if (line.length > 0) {
+      lines.push(line);
+    }
+
+    return lines;
+  }
+
   private drawWrappedText(
     value: string,
     x: number,
@@ -881,14 +1457,48 @@ export class MiniGameUi implements GameHud, InputSource {
     );
   }
 
+  private handleNoticeTap(x: number, y: number): void {
+    if (this.noticePrivacyOpen) {
+      if (this.isPointInside(this.noticeBackRect, x, y)) {
+        this.noticePrivacyOpen = false;
+      }
+      return;
+    }
+
+    if (this.isPointInside(this.noticePrivacyRect, x, y)) {
+      this.noticePrivacyOpen = true;
+      return;
+    }
+
+    if (this.isPointInside(this.noticeStartRect, x, y)) {
+      const start = this.noticeStartHandler;
+      if (!start) {
+        return;
+      }
+      this.dismissNotice();
+      this.noticeStartHandler = null;
+      start();
+    }
+  }
+
   private readonly handleTouchStart = (event: TtTouchEvent): void => {
     const touch = event.changedTouches[0];
     if (!touch) {
       return;
     }
 
+    if (!this.firstTouchHandled) {
+      this.firstTouchHandled = true;
+      this.onFirstTouch?.();
+    }
+
     const x = touch.clientX;
     const y = touch.clientY;
+
+    if (this.noticeActive) {
+      this.handleNoticeTap(x, y);
+      return;
+    }
 
     if (this.gameOverStats) {
       if (
@@ -896,6 +1506,13 @@ export class MiniGameUi implements GameHud, InputSource {
         this.isPointInside(this.restartRect, x, y)
       ) {
         this.onRestart();
+      }
+      return;
+    }
+
+    if (this.isPaused()) {
+      if (this.isPointInside(this.pauseResumeRect, x, y)) {
+        this.pauseControls?.toggle();
       }
       return;
     }
@@ -921,6 +1538,15 @@ export class MiniGameUi implements GameHud, InputSource {
 
     if (this.isPointInside(this.soundRect, x, y)) {
       this.soundEnabled = this.soundControls.toggle();
+      return;
+    }
+
+    if (
+      this.pauseControls &&
+      this.isPointInside(this.pauseRect, x, y)
+    ) {
+      this.reset();
+      this.pauseControls.toggle();
       return;
     }
 

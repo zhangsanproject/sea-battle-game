@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { ProjectileKind } from '../config';
 
-const PARTICLE_POOL_SIZE = 128;
+export const PARTICLE_POOL_SIZE = 160;
 
 interface EffectSlot {
   mesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;

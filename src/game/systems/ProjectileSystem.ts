@@ -5,7 +5,7 @@ import type { PlayerShip } from '../entities/PlayerShip';
 import type { EnemyManager } from './EnemyManager';
 import { segmentIntersectsSphere } from './collision';
 
-const PROJECTILE_POOL_SIZE = 48;
+const PROJECTILE_POOL_SIZE = 80;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 /** Recorded positions kept per projectile for the curved tracer trail. */
 const TRAIL_POINTS = 8;
@@ -37,10 +37,13 @@ export interface ProjectileSystemOptions {
     position: THREE.Vector3,
     enemy: EnemyShip,
     kind: ProjectileKind,
+    damage: number,
   ) => void;
   onPlayerHit: (damageTaken: number) => void;
   /** Emits smoke / wake puffs behind missiles and torpedoes while they fly. */
   onTrailPuff?: (position: THREE.Vector3, kind: ProjectileKind) => void;
+  /** Fires whenever a projectile actually leaves its slot (for run stats). */
+  onFired?: (owner: ProjectileOwner, kind: ProjectileKind) => void;
 }
 
 interface ProjectileSlot {
@@ -176,11 +179,15 @@ export class ProjectileSystem {
         position: THREE.Vector3,
         enemy: EnemyShip,
         kind: ProjectileKind,
+        damage: number,
       ) => void)
     | null;
   private readonly onPlayerHit: (damageTaken: number) => void;
   private readonly onTrailPuff:
     | ((position: THREE.Vector3, kind: ProjectileKind) => void)
+    | null;
+  private readonly onFired:
+    | ((owner: ProjectileOwner, kind: ProjectileKind) => void)
     | null;
   private disposed = false;
 
@@ -192,6 +199,7 @@ export class ProjectileSystem {
     this.onEnemyHit = options.onEnemyHit ?? null;
     this.onPlayerHit = options.onPlayerHit;
     this.onTrailPuff = options.onTrailPuff ?? null;
+    this.onFired = options.onFired ?? null;
 
     this.geometry = new THREE.CylinderGeometry(0.07, 0.105, 0.72, 6);
     this.playerMaterial = new THREE.MeshStandardMaterial({
@@ -408,6 +416,7 @@ export class ProjectileSystem {
     slot.active = true;
 
     this.resetTrail(slot, origin);
+    this.onFired?.(options.owner, kind);
   }
 
   update(deltaTime: number): void {
@@ -533,8 +542,11 @@ export class ProjectileSystem {
   ): void {
     this.impactPoint.copy(slot.mesh.position);
 
+    // Armour is resolved inside takeDamage; ask for the same number first so
+    // the damage text matches what the hull actually lost.
+    const dealtDamage = primaryTarget.previewDamage(slot.damage);
     const killed = primaryTarget.takeDamage(slot.damage);
-    this.onEnemyHit?.(this.impactPoint, primaryTarget, slot.kind);
+    this.onEnemyHit?.(this.impactPoint, primaryTarget, slot.kind, dealtDamage);
 
     if (killed) {
       this.onEnemyKilled(primaryTarget);

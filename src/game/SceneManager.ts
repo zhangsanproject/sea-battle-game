@@ -20,6 +20,10 @@ export interface SceneManagerOptions {
    * so the renderer never has to probe `window` for pointer type.
    */
   maxPixelRatio?: number;
+  /** Defaults to true. Mini-game builds turn it off to save fill rate. */
+  antialias?: boolean;
+  /** Directional-light shadow map edge, defaults to 1024. */
+  shadowMapSize?: number;
 }
 
 /**
@@ -74,6 +78,7 @@ export class SceneManager {
   private shakeDuration = 0;
   private basePixelRatio = 1;
   private qualityScale = 1;
+  private qualityLocked = false;
   private qualitySampleTime = 0;
   private qualitySampleFrames = 0;
   private qualityChangeCooldown = 0;
@@ -91,7 +96,7 @@ export class SceneManager {
     this.camera.lookAt(this.cameraTarget);
 
     const rendererOptions: THREE.WebGLRendererParameters = {
-      antialias: true,
+      antialias: options.antialias ?? true,
       alpha: false,
       powerPreference: 'high-performance',
     };
@@ -120,7 +125,11 @@ export class SceneManager {
     this.sun = new THREE.DirectionalLight(0xffefd0, 2.7);
     this.sun.position.copy(SUN_OFFSET);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(1024, 1024);
+    const shadowMapSize = Math.max(
+      256,
+      Math.min(2048, options.shadowMapSize ?? 1024),
+    );
+    this.sun.shadow.mapSize.set(shadowMapSize, shadowMapSize);
     this.sun.shadow.camera.left = -17;
     this.sun.shadow.camera.right = 17;
     this.sun.shadow.camera.top = 17;
@@ -296,8 +305,9 @@ export class SceneManager {
   }
 
   /**
-   * Degrades render resolution gradually when sustained frame times are slow.
-   * It never increases quality during a run, avoiding oscillating DPR changes.
+   * Degrades render resolution when sustained frame times are slow and steps
+   * back up once the device holds a comfortable frame time again. Both
+   * directions are rate-limited by a cooldown so the ratio cannot oscillate.
    */
   private adaptQuality(delta: number): void {
     this.qualityChangeCooldown = Math.max(
@@ -324,7 +334,41 @@ export class SceneManager {
       this.qualityScale = Math.max(0.66, this.qualityScale - 0.18);
       this.qualityChangeCooldown = 4;
       this.applyPixelRatio();
+      return;
     }
+
+    // Recover slowly once the device has proven it can hold a comfortable
+    // frame time; without this a single loading hitch would downgrade the
+    // whole session permanently.
+    if (
+      averageFrameTime < 0.0145 &&
+      this.qualityScale < 1 &&
+      this.qualityChangeCooldown === 0 &&
+      !this.qualityLocked
+    ) {
+      this.qualityScale = Math.min(1, this.qualityScale + 0.08);
+      this.qualityChangeCooldown = 6;
+      this.applyPixelRatio();
+    }
+  }
+
+  /**
+   * Jumps straight to the lowest pixel ratio. Wired to `tt.onMemoryWarning`,
+   * where reacting late costs more than dropping resolution early.
+   */
+  applyLowQuality(): void {
+    if (this.disposed) {
+      return;
+    }
+
+    this.qualityLocked = true;
+    this.qualityScale = 0.66;
+    this.qualityChangeCooldown = 10;
+    this.applyPixelRatio();
+  }
+
+  get qualityRatio(): number {
+    return this.qualityScale;
   }
 
   private getViewScale(): number {

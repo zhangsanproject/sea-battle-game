@@ -174,7 +174,7 @@ export class EnemyShip {
       0,
     );
     this.healthGroup.scale.setScalar(
-      Math.max(0.9, options.profile.visualScale),
+      Math.max(0.55, options.profile.visualScale),
     );
 
     const healthBack = new THREE.Mesh(
@@ -262,12 +262,25 @@ export class EnemyShip {
     this.muzzleFlash.visible = true;
   }
 
-  takeDamage(rawDamage: number): boolean {
+  /**
+   * Damage that would actually land, after armour. Kept separate from
+   * `takeDamage` so callers can report the real number without duplicating
+   * the armour rule.
+   */
+  previewDamage(rawDamage: number): number {
     if (!this.targetable || rawDamage <= 0) {
+      return 0;
+    }
+
+    return Math.max(1, rawDamage - this.profile.armor);
+  }
+
+  takeDamage(rawDamage: number): boolean {
+    const damage = this.previewDamage(rawDamage);
+    if (damage <= 0) {
       return false;
     }
 
-    const damage = Math.max(1, rawDamage - this.profile.armor);
     this.health = Math.max(0, this.health - damage);
     this.updateHealthFill();
 

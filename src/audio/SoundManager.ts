@@ -51,6 +51,21 @@ export class SoundManager implements SoundPlayer {
     return this.enabled;
   }
 
+  /**
+   * Safe to call on every touch: it only pays for context creation once and
+   * skips the resume when the context is already running.
+   */
+  unlock(): void {
+    if (this.disposed || !this.enabled) {
+      return;
+    }
+
+    const context = this.ensureContext();
+    if (context && context.state === 'suspended') {
+      void context.resume().catch(() => {});
+    }
+  }
+
   toggle(): boolean {
     this.enabled = !this.enabled;
 

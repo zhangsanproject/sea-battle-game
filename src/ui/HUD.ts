@@ -22,6 +22,11 @@ export class HUD implements GameHud {
   private readonly resultKills: HTMLElement;
   private readonly resultLevel: HTMLElement;
   private readonly resultBossKills: HTMLElement;
+  private readonly resultDamage: HTMLElement;
+  private readonly resultAccuracy: HTMLElement;
+  private readonly resultStreak: HTMLElement;
+  private readonly resultBest: HTMLElement;
+  private readonly resultRecord: HTMLElement;
   private readonly bossPanel: HTMLElement;
   private readonly bossName: HTMLElement;
   private readonly bossFill: HTMLElement;
@@ -129,6 +134,7 @@ export class HUD implements GameHud {
         </section>
 
         <div class="hud__damage-flash" data-damage-flash aria-hidden="true"></div>
+        <div class="hud__critical" data-critical aria-hidden="true"></div>
 
         <div class="hud__boss" data-boss hidden>
           <div class="hud__boss-heading">
@@ -161,6 +167,9 @@ export class HUD implements GameHud {
             <p class="hud__gameover-kicker">FLAGSHIP LOST</p>
             <h2 class="hud__gameover-title" id="gameover-title">旗舰战沉</h2>
             <p class="hud__gameover-subtitle">海域 01 · 战斗结束</p>
+            <p class="hud__gameover-record" data-result-record hidden>
+              ★ 新纪录
+            </p>
             <dl class="hud__gameover-stats">
               <div>
                 <dt>存活时间</dt>
@@ -177,6 +186,22 @@ export class HUD implements GameHud {
               <div>
                 <dt>Boss 击杀</dt>
                 <dd data-result-boss-kills>0</dd>
+              </div>
+              <div>
+                <dt>总伤害</dt>
+                <dd data-result-damage>0</dd>
+              </div>
+              <div>
+                <dt>命中率</dt>
+                <dd data-result-accuracy>—</dd>
+              </div>
+              <div>
+                <dt>最高连击</dt>
+                <dd data-result-streak>0</dd>
+              </div>
+              <div>
+                <dt>历史最佳</dt>
+                <dd data-result-best>0 舰</dd>
               </div>
             </dl>
             <button class="hud__restart" type="button" data-restart>
@@ -221,6 +246,11 @@ export class HUD implements GameHud {
     this.resultKills = this.query('[data-result-kills]');
     this.resultLevel = this.query('[data-result-level]');
     this.resultBossKills = this.query('[data-result-boss-kills]');
+    this.resultDamage = this.query('[data-result-damage]');
+    this.resultAccuracy = this.query('[data-result-accuracy]');
+    this.resultStreak = this.query('[data-result-streak]');
+    this.resultBest = this.query('[data-result-best]');
+    this.resultRecord = this.query('[data-result-record]');
     this.bossPanel = this.query('[data-boss]');
     this.bossName = this.query('[data-boss-name]');
     this.bossFill = this.query('[data-boss-fill]');
@@ -254,6 +284,7 @@ export class HUD implements GameHud {
     this.healthTrack.setAttribute('aria-valuenow', String(Math.round(health)));
     this.healthTrack.setAttribute('aria-valuemax', String(Math.round(maxHealth)));
     this.healthTrack.classList.toggle('is-low', healthRatio <= 0.3);
+    this.root.classList.toggle('is-critical', healthRatio <= 0.3);
   }
 
   setExperience(current: number, required: number): void {
@@ -421,6 +452,17 @@ export class HUD implements GameHud {
     this.resultKills.textContent = String(stats.kills);
     this.resultLevel.textContent = String(stats.level);
     this.resultBossKills.textContent = String(stats.bossKills);
+    this.resultDamage.textContent =
+      stats.damageDealt === undefined ? '—' : String(stats.damageDealt);
+    this.resultAccuracy.textContent =
+      stats.accuracy === undefined || stats.accuracy <= 0
+        ? '—'
+        : `${Math.round(stats.accuracy * 100)}%`;
+    this.resultStreak.textContent =
+      stats.bestStreak === undefined ? '—' : String(stats.bestStreak);
+    this.resultBest.textContent =
+      stats.bestKills === undefined ? '—' : `${stats.bestKills} 舰`;
+    this.resultRecord.hidden = !stats.isNewRecord;
     this.gameOver.hidden = false;
     requestAnimationFrame(() => {
       if (!this.disposed) {
@@ -437,6 +479,7 @@ export class HUD implements GameHud {
     this.restartButton.removeEventListener('click', this.handleRestartClick);
     this.upgradeOptions.removeEventListener('click', this.handleUpgradeClick);
     this.soundButton.removeEventListener('click', this.handleSoundToggle);
+    this.root.classList.remove('is-critical');
     this.root.replaceChildren();
   }
 

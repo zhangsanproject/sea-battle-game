@@ -61,8 +61,11 @@ export class MiniGamePlatform implements PlatformAdapter {
   private readonly runtime: TtRuntime | null;
   private readonly pauseListeners = new Set<() => void>();
   private readonly resumeListeners = new Set<() => void>();
+  private readonly memoryWarningListeners = new Set<() => void>();
   private inputSource: InputSource | null = null;
   private paused = false;
+  /** A pause requested by the player (pause button), not by the host. */
+  private manuallyPaused = false;
   private disposed = false;
 
   constructor() {
@@ -70,6 +73,7 @@ export class MiniGamePlatform implements PlatformAdapter {
     this.storage = new MiniGameStorage(this.runtime);
     this.runtime?.onShow?.(this.handleShow);
     this.runtime?.onHide?.(this.handleHide);
+    this.runtime?.onMemoryWarning?.(this.handleMemoryWarning);
   }
 
   setInputSource(input: InputSource): void {
@@ -85,6 +89,40 @@ export class MiniGamePlatform implements PlatformAdapter {
 
   isPaused(): boolean {
     return this.paused;
+  }
+
+  /**
+   * Drives the same pause path the host uses, so the in-game pause button and
+   * a phone call produce identical behaviour.
+   */
+  togglePause(): boolean {
+    if (this.paused) {
+      this.manuallyPaused = false;
+      this.setPaused(false);
+      return false;
+    }
+
+    this.manuallyPaused = true;
+    this.setPaused(true);
+    return true;
+  }
+
+  requestPause(): void {
+    this.manuallyPaused = true;
+    this.setPaused(true);
+  }
+
+  requestResume(): void {
+    this.manuallyPaused = false;
+    this.setPaused(false);
+  }
+
+  /** Memory pressure is not something the renderer can argue with. */
+  onMemoryWarning(listener: () => void): Unsubscribe {
+    this.memoryWarningListeners.add(listener);
+    return () => {
+      this.memoryWarningListeners.delete(listener);
+    };
   }
 
   onPause(listener: () => void): Unsubscribe {
@@ -109,9 +147,23 @@ export class MiniGamePlatform implements PlatformAdapter {
 
     this.runtime?.offShow?.(this.handleShow);
     this.runtime?.offHide?.(this.handleHide);
+    this.runtime?.offMemoryWarning?.(this.handleMemoryWarning);
     this.pauseListeners.clear();
     this.resumeListeners.clear();
+    this.memoryWarningListeners.clear();
     this.inputSource = null;
+  }
+
+  private setPaused(paused: boolean): void {
+    if (this.paused === paused || this.disposed) {
+      return;
+    }
+
+    this.paused = paused;
+    const listeners = paused ? this.pauseListeners : this.resumeListeners;
+    for (const listener of listeners) {
+      listener();
+    }
   }
 
   private readonly handleShow = (): void => {
@@ -119,10 +171,12 @@ export class MiniGamePlatform implements PlatformAdapter {
       return;
     }
 
-    this.paused = false;
-    for (const listener of this.resumeListeners) {
-      listener();
+    // A player who paused before backgrounding the game stays paused.
+    if (this.manuallyPaused) {
+      return;
     }
+
+    this.setPaused(false);
   };
 
   private readonly handleHide = (): void => {
@@ -130,8 +184,15 @@ export class MiniGamePlatform implements PlatformAdapter {
       return;
     }
 
-    this.paused = true;
-    for (const listener of this.pauseListeners) {
+    this.setPaused(true);
+  };
+
+  private readonly handleMemoryWarning = (): void => {
+    if (this.disposed) {
+      return;
+    }
+
+    for (const listener of this.memoryWarningListeners) {
       listener();
     }
   };

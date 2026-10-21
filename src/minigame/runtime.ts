@@ -50,6 +50,8 @@ export interface TtRuntime {
   getStorageSync(key: string): unknown;
   setStorageSync(key: string, value: string): void;
   removeStorageSync(key: string): void;
+  onMemoryWarning?(listener: () => void): void;
+  offMemoryWarning?(listener: () => void): void;
 }
 
 export function getTtRuntime(): TtRuntime | null {

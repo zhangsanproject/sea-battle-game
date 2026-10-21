@@ -35,6 +35,7 @@ export interface FakeRuntime {
     cancel: TtTouchHandler[];
   };
   lifecycle: { show: Array<() => void>; hide: Array<() => void> };
+  memoryWarnings: Array<() => void>;
   removeTouchHandlerCalls: number;
   systemInfo: TtSystemInfo;
   setStorageThrows: boolean;
@@ -83,6 +84,9 @@ function createContext2D(canvas: FakeCanvas): Record<string, unknown> {
     createLinearGradient() {
       return { addColorStop() {} };
     },
+    createRadialGradient() {
+      return { addColorStop() {} };
+    },
   };
 }
 
@@ -95,6 +99,7 @@ export function createFakeRuntime(
     storage: new Map<string, string>(),
     touchHandlers: { start: [], move: [], end: [], cancel: [] },
     lifecycle: { show: [], hide: [] },
+    memoryWarnings: [],
     removeTouchHandlerCalls: 0,
     systemInfo: {
       screenWidth: 375,
@@ -152,6 +157,14 @@ export function createFakeRuntime(
     },
     offHide: (listener: () => void) => {
       fake.lifecycle.hide = fake.lifecycle.hide.filter(
+        (entry) => entry !== listener,
+      );
+    },
+    onMemoryWarning: (listener: () => void) => {
+      fake.memoryWarnings.push(listener);
+    },
+    offMemoryWarning: (listener: () => void) => {
+      fake.memoryWarnings = fake.memoryWarnings.filter(
         (entry) => entry !== listener,
       );
     },

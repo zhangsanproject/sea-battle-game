@@ -51,11 +51,15 @@ describe('targeting and combat', () => {
 
   it('applies damage, disables a dead target, and leaves it targetable when damaged', () => {
     const enemy = createEnemy('raider', 8, 0);
+    // Relative to the hull so rebalancing health does not break the case.
+    const partial = Math.round(enemy.maxHealth / 2);
 
     expect(enemy.isTargetable).toBe(true);
-    expect(enemy.takeDamage(30)).toBe(false);
+    expect(enemy.takeDamage(partial)).toBe(false);
     expect(enemy.isTargetable).toBe(true);
-    expect(enemy.currentHealth).toBe(enemy.maxHealth - 30);
+    expect(enemy.currentHealth).toBe(
+      enemy.maxHealth - Math.max(1, partial - enemy.profile.armor),
+    );
 
     expect(enemy.takeDamage(enemy.maxHealth + enemy.profile.armor)).toBe(true);
     expect(enemy.isTargetable).toBe(false);
@@ -244,5 +248,41 @@ describe('targeting and combat', () => {
     projectiles.dispose();
     enemies.dispose();
     player.dispose();
+  });
+});
+
+describe('armour accounting', () => {
+  it('reports the post-armour damage that takeDamage applies', () => {
+    const enemy = createEnemy('destroyer', 0, 0);
+    const raw = 20;
+    const armor = enemy.profile.armor;
+
+    expect(enemy.previewDamage(raw)).toBe(raw - armor);
+
+    const before = enemy.currentHealth;
+    enemy.takeDamage(raw);
+
+    expect(before - enemy.currentHealth).toBe(raw - armor);
+  });
+
+  it('never lets armour cancel damage completely', () => {
+    // Cruiser armour is 8, so a hit equal to the armour still lands for 1.
+    const enemy = createEnemy('cruiser', 0, 0);
+    const armor = enemy.profile.armor;
+
+    expect(armor).toBeGreaterThan(1);
+    expect(enemy.previewDamage(1)).toBe(1);
+    expect(enemy.previewDamage(armor)).toBe(1);
+    expect(enemy.previewDamage(armor + 4)).toBe(4);
+  });
+
+  it('reports zero for a dead target or a non-positive hit', () => {
+    const enemy = createEnemy('raider', 0, 0);
+
+    expect(enemy.previewDamage(0)).toBe(0);
+    expect(enemy.previewDamage(-5)).toBe(0);
+
+    enemy.takeDamage(enemy.maxHealth + enemy.profile.armor);
+    expect(enemy.previewDamage(30)).toBe(0);
   });
 });

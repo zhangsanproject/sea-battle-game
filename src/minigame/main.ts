@@ -129,7 +129,15 @@ function bootstrap(): void {
   });
 
   let activeGame: Game | null = null;
+  let activeScene: SceneManager | null = null;
   let starting = false;
+  let noticeShown = false;
+
+  // Memory pressure is a signal from the host, not a guess: drop the render
+  // resolution immediately instead of waiting for the frame-time sampler.
+  platform.onMemoryWarning(() => {
+    activeScene?.applyLowQuality();
+  });
 
   const startGame = (): void => {
     if (starting) {
@@ -139,8 +147,11 @@ function bootstrap(): void {
 
     try {
       const previousGame = activeGame;
+      const previousScene = activeScene;
       activeGame = null;
+      activeScene = null;
       previousGame?.dispose();
+      previousScene?.dispose();
 
       const sceneCanvas = runtime.createCanvas();
       prepareSceneCanvas(sceneCanvas);
@@ -151,7 +162,16 @@ function bootstrap(): void {
           enabled: sound.isEnabled,
           toggle: () => sound.toggle(),
         },
+        // One pause path for both the button and the host lifecycle.
+        pauseControls: {
+          isPaused: () => platform.isPaused(),
+          toggle: () => platform.togglePause(),
+        },
         onRestart: startGame,
+        // The helium runtime cannot listen for pointerdown, so the audio
+        // context is unlocked from our own first touch instead.
+        onFirstTouch: () => sound.unlock(),
+        operatorLine: '适龄提示与隐私说明见启动页',
       });
       platform.setInputSource(ui);
 
@@ -163,7 +183,13 @@ function bootstrap(): void {
         // Touch devices only; never probe window.matchMedia here, the helium
         // runtime throws "Illegal invocation" for it.
         maxPixelRatio: 1.5,
+        // The 2D layer already smooths the composite, and dropping MSAA buys
+        // a measurable amount of fill rate on mid-range phones.
+        antialias: false,
+        shadowMapSize: 768,
       });
+      activeScene = sceneManager;
+      ui.attachCamera(sceneManager.camera);
 
       const game = new Game({
         sceneManager,
@@ -172,10 +198,19 @@ function bootstrap(): void {
         platform,
       });
       activeGame = game;
-      game.start();
+
+      if (noticeShown) {
+        game.start();
+      } else {
+        noticeShown = true;
+        ui.showComplianceNotice(() => {
+          game.start();
+        });
+      }
     } catch (error) {
       activeGame?.dispose();
       activeGame = null;
+      activeScene = null;
       console.error('[海战霸主] 抖音小游戏启动失败', error);
       drawFatalError(screenCanvas, error);
     } finally {

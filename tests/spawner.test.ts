@@ -98,7 +98,7 @@ describe('EnemySpawner', () => {
     player.dispose();
   });
 
-  it('spawns a scaled boss and pauses normal reinforcements', () => {
+  it('spawns a scaled boss and keeps a thinner swarm arriving', () => {
     const player = new PlayerShip();
     const enemies = new EnemyManager();
     const danger = new DangerSystem();
@@ -127,8 +127,14 @@ describe('EnemySpawner', () => {
       ENEMY_PROFILES.boss.armor,
     );
 
+    // Reinforcements continue during a boss fight instead of drying up, but
+    // they must stay below the normal cap.
     spawner.update(100, tierTwo);
-    expect(enemies.getEnemies()).toHaveLength(5);
+    const escorts = enemies.getEnemies().length - 1;
+    expect(escorts).toBeGreaterThan(4);
+    expect(escorts).toBeLessThanOrEqual(
+      Math.ceil(tierTwo.targetEnemyCount * GAME_CONFIG.spawner.bossReinforcementFactor),
+    );
 
     enemies.dispose();
     player.dispose();

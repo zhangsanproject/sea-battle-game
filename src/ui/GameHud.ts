@@ -6,6 +6,18 @@ export interface GameOverStats {
   kills: number;
   level: number;
   bossKills: number;
+  /** Total damage the player dealt this run. */
+  damageDealt?: number;
+  /** Hits divided by shots, 0..1. Omitted when no shot was fired. */
+  accuracy?: number;
+  /** Longest chain of kills inside the combo window. */
+  bestStreak?: number;
+  /** Stored best kill count, shown for comparison. */
+  bestKills?: number;
+  /** True when this run beat the stored record. */
+  isNewRecord?: boolean;
+  /** How many runs have been played before this one. */
+  totalRuns?: number;
 }
 
 export interface SoundControls {
@@ -33,6 +45,11 @@ export interface GameHud {
   ): void;
   hideUpgradeChoices(): void;
   showGameOver(stats: GameOverStats): void;
+  /**
+   * Optional floating combat text. Implementations that cannot project world
+   * space (the DOM HUD) simply leave it out.
+   */
+  showDamageNumber?(amount: number, x: number, y: number, z: number): void;
   render(deltaTime: number): void;
   dispose(): void;
 }

@@ -151,3 +151,68 @@ describe('MiniGamePlatform input wiring', () => {
     expect(() => platform!.createInput()).toThrow();
   });
 });
+
+describe('MiniGamePlatform pause control', () => {
+  it('routes the pause button through the same listeners as the host', () => {
+    const onPause = vi.fn();
+    const onResume = vi.fn();
+    platform!.onPause(onPause);
+    platform!.onResume(onResume);
+
+    expect(platform!.togglePause()).toBe(true);
+    expect(platform!.isPaused()).toBe(true);
+    expect(onPause).toHaveBeenCalledTimes(1);
+
+    expect(platform!.togglePause()).toBe(false);
+    expect(platform!.isPaused()).toBe(false);
+    expect(onResume).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a manual pause across a hide/show cycle', () => {
+    const onResume = vi.fn();
+    platform!.onResume(onResume);
+
+    platform!.togglePause();
+
+    for (const listener of fake!.lifecycle.hide) {
+      listener();
+    }
+    for (const listener of fake!.lifecycle.show) {
+      listener();
+    }
+
+    expect(platform!.isPaused()).toBe(true);
+    expect(onResume).not.toHaveBeenCalled();
+  });
+
+  it('resumes after a host pause instead of pausing again', () => {
+    for (const listener of fake!.lifecycle.hide) {
+      listener();
+    }
+
+    expect(platform!.isPaused()).toBe(true);
+    expect(platform!.togglePause()).toBe(false);
+    expect(platform!.isPaused()).toBe(false);
+  });
+
+  it('forwards memory warnings to renderer consumers', () => {
+    const onMemoryWarning = vi.fn();
+    platform!.onMemoryWarning(onMemoryWarning);
+
+    expect(fake!.memoryWarnings).toHaveLength(1);
+
+    for (const listener of fake!.memoryWarnings) {
+      listener();
+    }
+
+    expect(onMemoryWarning).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops forwarding memory warnings on dispose', () => {
+    const onMemoryWarning = vi.fn();
+    platform!.onMemoryWarning(onMemoryWarning);
+    platform!.dispose();
+
+    expect(fake!.memoryWarnings).toHaveLength(0);
+  });
+});

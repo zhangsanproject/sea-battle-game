@@ -18,9 +18,32 @@ export class GameLoop {
   private accumulator = 0;
   private elapsedTime = 0;
   private running = false;
+  private simulationPaused = false;
 
   constructor(callbacks: GameLoopCallbacks) {
     this.callbacks = callbacks;
+  }
+
+  /**
+   * Freezes the simulation while keeping the render pass alive, so an overlay
+   * (pause panel, compliance notice) can still be drawn on top of the scene.
+   */
+  setPaused(paused: boolean): void {
+    if (this.simulationPaused === paused) {
+      return;
+    }
+
+    this.simulationPaused = paused;
+    this.accumulator = 0;
+
+    if (!paused) {
+      // The host may have paused for minutes; never replay that gap.
+      this.lastTimestamp = performance.now();
+    }
+  }
+
+  get isPaused(): boolean {
+    return this.simulationPaused;
   }
 
   start(): void {
@@ -62,14 +85,18 @@ export class GameLoop {
     this.accumulator += frameDelta;
 
     let steps = 0;
-    while (this.accumulator >= FIXED_DELTA && steps < MAX_FIXED_STEPS) {
-      this.elapsedTime += FIXED_DELTA;
-      this.callbacks.fixedUpdate(FIXED_DELTA, this.elapsedTime);
-      this.accumulator -= FIXED_DELTA;
-      steps += 1;
-    }
+    if (!this.simulationPaused) {
+      while (this.accumulator >= FIXED_DELTA && steps < MAX_FIXED_STEPS) {
+        this.elapsedTime += FIXED_DELTA;
+        this.callbacks.fixedUpdate(FIXED_DELTA, this.elapsedTime);
+        this.accumulator -= FIXED_DELTA;
+        steps += 1;
+      }
 
-    if (steps === MAX_FIXED_STEPS) {
+      if (steps === MAX_FIXED_STEPS) {
+        this.accumulator = 0;
+      }
+    } else {
       this.accumulator = 0;
     }
 

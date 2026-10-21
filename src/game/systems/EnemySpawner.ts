@@ -27,13 +27,6 @@ export class EnemySpawner {
   ) {}
 
   update(deltaTime: number, stage: DangerStage): void {
-    const activeBoss = this.enemies.getBoss();
-
-    if (activeBoss) {
-      this.spawnTimer = stage.spawnIntervalSeconds;
-      return;
-    }
-
     if (
       !this.bossSpawned &&
       stage.tier >= GAME_CONFIG.boss.spawnDangerTier
@@ -43,20 +36,39 @@ export class EnemySpawner {
       return;
     }
 
-    const activeEnemies = this.enemies.getEnemies().length;
+    // A boss used to freeze reinforcements for its whole lifetime, which left
+    // the arena empty for the better part of a minute. Keep the swarm coming,
+    // just thinner and slower so the boss still owns the fight.
+    const activeBoss = this.enemies.getBoss();
+    const cap = activeBoss
+      ? Math.max(
+          4,
+          Math.ceil(
+            stage.targetEnemyCount *
+              GAME_CONFIG.spawner.bossReinforcementFactor,
+          ),
+        )
+      : stage.targetEnemyCount;
+    const interval = activeBoss
+      ? stage.spawnIntervalSeconds *
+        GAME_CONFIG.spawner.bossSpawnIntervalFactor
+      : stage.spawnIntervalSeconds;
+
+    const activeEnemies =
+      this.enemies.getEnemies().length - (activeBoss ? 1 : 0);
     this.spawnTimer -= deltaTime;
 
     if (this.spawnTimer > 0) {
       return;
     }
 
-    if (activeEnemies >= stage.targetEnemyCount) {
-      this.spawnTimer = stage.spawnIntervalSeconds;
+    if (activeEnemies >= cap) {
+      this.spawnTimer = interval;
       return;
     }
 
     this.spawnNormalEnemy(stage);
-    this.spawnTimer = stage.spawnIntervalSeconds;
+    this.spawnTimer = interval;
   }
 
   private spawnNormalEnemy(stage: DangerStage): void {

@@ -1,4 +1,4 @@
-import { Vector2 } from 'three';
+import { PerspectiveCamera, Vector2 } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpgradeOffer } from '../src/game/progression/types';
 import { MiniGameUi } from '../src/minigame/MiniGameUi';
@@ -47,6 +47,9 @@ interface Harness {
   sceneCanvas: FakeCanvas;
   toggleSound: ReturnType<typeof vi.fn>;
   restart: ReturnType<typeof vi.fn>;
+  pauseToggle: ReturnType<typeof vi.fn>;
+  paused: { value: boolean };
+  firstTouch: ReturnType<typeof vi.fn>;
 }
 
 let harness: Harness | null = null;
@@ -62,14 +65,35 @@ function createHarness(): Harness {
 
   const toggleSound = vi.fn(() => false);
   const restart = vi.fn();
+  const firstTouch = vi.fn();
+  const paused = { value: false };
+  const pauseToggle = vi.fn(() => {
+    paused.value = !paused.value;
+    return paused.value;
+  });
 
   const ui = new MiniGameUi(screenCanvas as unknown as HTMLCanvasElement, {
     sceneCanvas: sceneCanvas as unknown as HTMLCanvasElement,
     soundControls: { enabled: true, toggle: toggleSound as () => boolean },
+    pauseControls: {
+      isPaused: () => paused.value,
+      toggle: pauseToggle as () => boolean,
+    },
     onRestart: restart,
+    onFirstTouch: firstTouch,
   });
 
-  harness = { fake, ui, screenCanvas, sceneCanvas, toggleSound, restart };
+  harness = {
+    fake,
+    ui,
+    screenCanvas,
+    sceneCanvas,
+    toggleSound,
+    restart,
+    pauseToggle,
+    paused,
+    firstTouch,
+  };
   return harness;
 }
 
@@ -320,7 +344,7 @@ describe('MiniGameUi overlays and buttons', () => {
 
     ui.showGameOver(stats);
     ui.render(1 / 60);
-    emitTouch(fake.touchHandlers.start, 1, 100, 510);
+    emitTouch(fake.touchHandlers.start, 1, 100, 560);
 
     expect(restart).toHaveBeenCalledTimes(1);
   });
@@ -404,5 +428,216 @@ describe('MiniGameUi teardown', () => {
     ui.render(1 / 60);
 
     expect(screenCanvas.calls.draws).toBe(drawsBefore);
+  });
+});
+
+describe('MiniGameUi pause control', () => {
+  it('pauses from the status bar button instead of starting a drag', () => {
+    const { ui, fake, pauseToggle } = createHarness();
+
+    ui.render(1 / 60);
+    emitTouch(fake.touchHandlers.start, 1, 255, 104);
+    emitTouch(fake.touchHandlers.move, 1, 300, 104);
+
+    expect(pauseToggle).toHaveBeenCalledTimes(1);
+    expect(moveVector(ui).length()).toBe(0);
+  });
+
+  it('draws the pause panel and resumes from it', () => {
+    const { ui, screenCanvas, fake, pauseToggle } = createHarness();
+
+    ui.render(1 / 60);
+    emitTouch(fake.touchHandlers.start, 1, 255, 104);
+    ui.render(1 / 60);
+
+    expect(screenCanvas.calls.texts).toContain('战斗暂停');
+    expect(screenCanvas.calls.texts).toContain('继续战斗');
+
+    emitTouch(fake.touchHandlers.start, 2, 187, 455);
+    expect(pauseToggle).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses to steer while the simulation is paused', () => {
+    const { ui, fake, paused } = createHarness();
+
+    paused.value = true;
+    emitTouch(fake.touchHandlers.start, 1, 80, 600);
+    emitTouch(fake.touchHandlers.move, 1, 130, 600);
+
+    expect(moveVector(ui).length()).toBe(0);
+  });
+});
+
+describe('MiniGameUi combat feedback', () => {
+  it('projects damage numbers to the screen once a camera is attached', () => {
+    const { ui, screenCanvas } = createHarness();
+    const camera = new PerspectiveCamera(42, 375 / 812, 0.1, 200);
+    camera.position.set(0, 12, 18);
+    camera.lookAt(0, 0, 0);
+
+    ui.attachCamera(camera);
+    ui.showDamageNumber(37, 0, 1, 0);
+    ui.render(1 / 60);
+
+    expect(screenCanvas.calls.texts).toContain('37');
+  });
+
+  it('drops damage numbers without a camera instead of throwing', () => {
+    const { ui, screenCanvas } = createHarness();
+
+    ui.showDamageNumber(12, 0, 1, 0);
+    ui.render(1 / 60);
+
+    expect(screenCanvas.calls.texts).not.toContain('12');
+  });
+
+  it('expires damage numbers after their lifetime', () => {
+    const { ui, screenCanvas } = createHarness();
+    const camera = new PerspectiveCamera(42, 375 / 812, 0.1, 200);
+    camera.position.set(0, 12, 18);
+    camera.lookAt(0, 0, 0);
+
+    ui.attachCamera(camera);
+    ui.showDamageNumber(55, 0, 1, 0);
+    ui.render(1 / 60);
+    expect(screenCanvas.calls.texts).toContain('55');
+
+    screenCanvas.calls.texts.length = 0;
+    for (let frame = 0; frame < 60; frame += 1) {
+      ui.render(1 / 60);
+    }
+
+    // After a full second the number has timed out and stops being painted.
+    screenCanvas.calls.texts.length = 0;
+    ui.render(1 / 60);
+
+    expect(screenCanvas.calls.texts).not.toContain('55');
+  });
+
+  it('warns on screen while the hull is critical', () => {
+    const { ui, screenCanvas } = createHarness();
+
+    ui.update({ health: 8, maxHealth: 100, level: 3 });
+    ui.render(1 / 60);
+
+    expect(screenCanvas.calls.texts).toContain('船体严重受损');
+  });
+
+  it('stays quiet above the critical threshold', () => {
+    const { ui, screenCanvas } = createHarness();
+
+    ui.update({ health: 70, maxHealth: 100, level: 3 });
+    ui.render(1 / 60);
+
+    expect(screenCanvas.calls.texts).not.toContain('船体严重受损');
+  });
+});
+
+describe('MiniGameUi launch notice', () => {
+  it('shows the health advisory before the game starts', () => {
+    const { ui, screenCanvas } = createHarness();
+    const start = vi.fn();
+
+    ui.showComplianceNotice(start);
+
+    const texts = screenCanvas.calls.texts.join(' | ');
+    expect(texts).toContain('健康游戏忠告');
+    expect(texts).toContain('抵制不良游戏');
+    expect(texts).toContain('适龄提示');
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('starts only after the start button is tapped', () => {
+    const { ui, fake } = createHarness();
+    const start = vi.fn();
+
+    ui.showComplianceNotice(start);
+    emitTouch(fake.touchHandlers.start, 1, 187, 100);
+    expect(start).not.toHaveBeenCalled();
+
+    emitTouch(fake.touchHandlers.start, 2, 187, 474);
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens and closes the privacy policy without starting the game', () => {
+    const { ui, screenCanvas, fake } = createHarness();
+    const start = vi.fn();
+
+    ui.showComplianceNotice(start);
+    emitTouch(fake.touchHandlers.start, 1, 187, 528);
+    ui.render(1 / 60);
+
+    const privacyTexts = screenCanvas.calls.texts.join(' | ');
+    expect(privacyTexts).toContain('隐私政策');
+    expect(privacyTexts).toContain('我们不收集什么');
+    expect(start).not.toHaveBeenCalled();
+
+    emitTouch(fake.touchHandlers.start, 2, 187, 716);
+    emitTouch(fake.touchHandlers.start, 3, 187, 474);
+
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not steer the ship while the notice is open', () => {
+    const { ui, fake } = createHarness();
+
+    ui.showComplianceNotice(vi.fn());
+    emitTouch(fake.touchHandlers.start, 1, 80, 600);
+    emitTouch(fake.touchHandlers.move, 1, 130, 600);
+
+    expect(moveVector(ui).length()).toBe(0);
+  });
+
+  it('unlocks audio from the very first touch', () => {
+    const { ui, fake, firstTouch } = createHarness();
+
+    ui.showComplianceNotice(vi.fn());
+    emitTouch(fake.touchHandlers.start, 1, 187, 100);
+    emitTouch(fake.touchHandlers.start, 2, 100, 600);
+
+    expect(firstTouch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('MiniGameUi result panel', () => {
+  it('shows the extra run stats and the stored best', () => {
+    const { ui, screenCanvas } = createHarness();
+
+    ui.showGameOver({
+      survivalSeconds: 128,
+      kills: 21,
+      level: 9,
+      bossKills: 2,
+      damageDealt: 4820,
+      accuracy: 0.615,
+      bestStreak: 7,
+      bestKills: 21,
+      isNewRecord: true,
+      totalRuns: 7,
+    });
+    ui.render(1 / 60);
+
+    const texts = screenCanvas.calls.texts.join(' | ');
+    expect(texts).toContain('总伤害');
+    expect(texts).toContain('4820');
+    expect(texts).toContain('62%');
+    expect(texts).toContain('最高连击');
+    expect(texts).toContain('★ 新纪录');
+  });
+
+  it('hides the record badge on an ordinary run', () => {
+    const { ui, screenCanvas } = createHarness();
+
+    ui.showGameOver({
+      survivalSeconds: 20,
+      kills: 2,
+      level: 2,
+      bossKills: 0,
+      bestKills: 21,
+      isNewRecord: false,
+    });
+    ui.render(1 / 60);
+
+    expect(screenCanvas.calls.texts).not.toContain('★ 新纪录');
   });
 });
