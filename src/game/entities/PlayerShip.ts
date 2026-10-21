@@ -10,6 +10,11 @@ export interface PlayerStatus {
 }
 
 const HULL_COLOR = 0x17384f;
+/**
+ * Global hull scale. Kept in sync with the enemy `visualScale` values (both are
+ * 20% smaller than the original art) so the ship-to-ship size ratio holds.
+ */
+const HULL_SCALE = 0.8;
 const HULL_ACCENT_COLOR = 0x8b3b3c;
 const DECK_COLOR = 0xc69b64;
 const DECK_DARK_COLOR = 0x83603f;
@@ -148,6 +153,10 @@ export class PlayerShip {
   constructor() {
     this.root.name = 'PlayerShip';
     this.visual.name = 'PlayerShipVisual';
+    // Portrait phones only show about 13 units either side, so the hull is
+    // scaled down to leave room for more boats on screen. Turrets, muzzles and
+    // evolution parts are all children of `visual`, so they follow for free.
+    this.visual.scale.setScalar(HULL_SCALE);
     this.root.add(this.visual);
 
     this.buildHull();

@@ -135,10 +135,10 @@ describe('portrait framing', () => {
     const viewScale = Math.min(Math.max(0.94 / aspect, 1), 2.45);
     const cameraDistance = Math.hypot(10, 16.5, 22) * viewScale;
     const visibleHeight = 2 * cameraDistance * Math.tan((48 / 2) * (Math.PI / 180));
-    // The hull silhouette is about 6 units long.
-    const shipShare = 6 / visibleHeight;
+    // The hull silhouette is about 4.8 units long after the 0.8 hull scale.
+    const shipShare = 4.8 / visibleHeight;
 
-    expect(shipShare).toBeGreaterThan(0.05);
-    expect(shipShare).toBeLessThan(0.16);
+    expect(shipShare).toBeGreaterThan(0.04);
+    expect(shipShare).toBeLessThan(0.14);
   });
 });
