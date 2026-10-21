@@ -1,4 +1,12 @@
-import { getTtRuntime, type TtRuntime } from '../minigame/runtime';
+import {
+  OpenCapabilities,
+  type OpenCapabilityConfig,
+} from '../minigame/openCapabilities';
+import {
+  getTtRuntime,
+  type TtRuntime,
+  type TtShowOptions,
+} from '../minigame/runtime';
 import type {
   InputSource,
   KeyValueStorage,
@@ -57,6 +65,7 @@ class MiniGameStorage implements KeyValueStorage {
  */
 export class MiniGamePlatform implements PlatformAdapter {
   readonly storage: KeyValueStorage;
+  readonly capabilities: OpenCapabilities;
 
   private readonly runtime: TtRuntime | null;
   private readonly pauseListeners = new Set<() => void>();
@@ -68,10 +77,18 @@ export class MiniGamePlatform implements PlatformAdapter {
   private manuallyPaused = false;
   private disposed = false;
 
-  constructor() {
+  constructor(capabilityConfig: OpenCapabilityConfig = {}) {
     this.runtime = getTtRuntime();
     this.storage = new MiniGameStorage(this.runtime);
-    this.runtime?.onShow?.(this.handleShow);
+    this.capabilities = new OpenCapabilities(
+      this.runtime,
+      this.storage,
+      capabilityConfig,
+    );
+    // The sidebar check has to read the raw onShow payload, and it has to be
+    // registered before anything else runs: a late listener misses the resume
+    // from the sidebar and the reward never arrives.
+    this.runtime?.onShow?.(this.handleShowWithCapabilities);
     this.runtime?.onHide?.(this.handleHide);
     this.runtime?.onMemoryWarning?.(this.handleMemoryWarning);
   }
@@ -145,7 +162,7 @@ export class MiniGamePlatform implements PlatformAdapter {
     }
     this.disposed = true;
 
-    this.runtime?.offShow?.(this.handleShow);
+    this.runtime?.offShow?.(this.handleShowWithCapabilities);
     this.runtime?.offHide?.(this.handleHide);
     this.runtime?.offMemoryWarning?.(this.handleMemoryWarning);
     this.pauseListeners.clear();
@@ -165,6 +182,13 @@ export class MiniGamePlatform implements PlatformAdapter {
       listener();
     }
   }
+
+  private readonly handleShowWithCapabilities = (
+    options?: TtShowOptions,
+  ): void => {
+    this.capabilities.handleShow(options);
+    this.handleShow();
+  };
 
   private readonly handleShow = (): void => {
     if (this.disposed) {

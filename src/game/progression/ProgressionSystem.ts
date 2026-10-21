@@ -135,6 +135,29 @@ export class ProgressionSystem {
     return gainedLevels;
   }
 
+  /**
+   * Grants a level-up that did not come from experience: sidebar re-visit or a
+   * rewarded video. Keeps the level curve and the level-up heal consistent with
+   * a normal level so the reward cannot be told apart from real progress.
+   */
+  grantBonusLevelUp(): void {
+    this.level += 1;
+    this.pendingLevelUps += 1;
+    this.experienceToNext =
+      GAME_CONFIG.progression.baseExperience +
+      (this.level - 1) * GAME_CONFIG.progression.experienceGrowth;
+    this.player.status.level = this.level;
+
+    const heal = Math.round(
+      this.player.status.maxHealth *
+        GAME_CONFIG.progression.levelUpHealRatio,
+    );
+    this.player.status.health = Math.min(
+      this.player.status.maxHealth,
+      this.player.status.health + heal,
+    );
+  }
+
   beginUpgradeSelection(): UpgradeOffer[] {
     if (this.pendingLevelUps <= 0) {
       return [];

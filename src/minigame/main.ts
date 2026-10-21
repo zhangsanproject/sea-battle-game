@@ -2,6 +2,8 @@ import { SoundManager } from '../audio/SoundManager';
 import { Game } from '../game/Game';
 import { SceneManager } from '../game/SceneManager';
 import { MiniGamePlatform } from '../platform/MiniGamePlatform';
+import { CAPABILITY_CONFIG } from './capabilityConfig';
+import { BONUS_UPGRADE_KEY } from './openCapabilities';
 import { MiniGameUi } from './MiniGameUi';
 import { getTtRuntime } from './runtime';
 
@@ -115,7 +117,7 @@ function bootstrap(): void {
   installFrameScheduler();
 
   const screenCanvas = runtime.createCanvas();
-  const platform = new MiniGamePlatform();
+  const platform = new MiniGamePlatform(CAPABILITY_CONFIG);
   const sound = new SoundManager(platform.storage, () => {
     if (typeof runtime.createWebAudioContext !== 'function') {
       return null;
@@ -168,6 +170,25 @@ function bootstrap(): void {
           toggle: () => platform.togglePause(),
         },
         onRestart: startGame,
+        capabilities: platform.capabilities,
+        // The video must be finished before the reward is banked; the next run
+        // collects it from storage and hands out a free upgrade.
+        onRewardedAd: () => {
+          void platform.capabilities.showRewardedAd().then((earned) => {
+            if (!earned) {
+              ui.showKillFeedback('视频未看完，未发放奖励');
+              return;
+            }
+
+            const stored = Number.parseInt(
+              platform.storage.getItem(BONUS_UPGRADE_KEY) ?? '',
+              10,
+            );
+            const next = (Number.isFinite(stored) ? stored : 0) + 1;
+            platform.storage.setItem(BONUS_UPGRADE_KEY, String(next));
+            ui.showKillFeedback('下一局开局 +1 次强化');
+          });
+        },
         // The helium runtime cannot listen for pointerdown, so the audio
         // context is unlocked from our own first touch instead.
         onFirstTouch: () => sound.unlock(),

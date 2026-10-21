@@ -2,6 +2,7 @@ import { PerspectiveCamera, Vector2 } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpgradeOffer } from '../src/game/progression/types';
 import { MiniGameUi } from '../src/minigame/MiniGameUi';
+import type { GameCapabilities } from '../src/platform/PlatformAdapter';
 import type { GameOverStats } from '../src/ui/GameHud';
 import {
   createFakeRuntime,
@@ -54,7 +55,9 @@ interface Harness {
 
 let harness: Harness | null = null;
 
-function createHarness(): Harness {
+function createHarness(
+  options: { capabilities?: GameCapabilities } = {},
+): Harness {
   const fake = createFakeRuntime();
   installRuntime(fake);
 
@@ -81,6 +84,7 @@ function createHarness(): Harness {
     },
     onRestart: restart,
     onFirstTouch: firstTouch,
+    capabilities: options.capabilities,
   });
 
   harness = {
@@ -346,7 +350,9 @@ describe('MiniGameUi overlays and buttons', () => {
 
     ui.showGameOver(stats);
     ui.render(1 / 60);
-    emitTouch(fake.touchHandlers.start, 1, 100, 560);
+    // The panel grew to make room for the capability buttons, so the restart
+    // button sits lower than it used to.
+    emitTouch(fake.touchHandlers.start, 1, 100, 615);
 
     expect(restart).toHaveBeenCalledTimes(1);
   });
@@ -641,5 +647,73 @@ describe('MiniGameUi result panel', () => {
     ui.render(1 / 60);
 
     expect(screenCanvas.calls.texts).not.toContain('★ 新纪录');
+  });
+});
+
+
+describe('MiniGameUi capability entry points', () => {
+  function createCapabilities(
+    overrides: Partial<GameCapabilities> = {},
+  ): GameCapabilities {
+    return {
+      sidebarRewardReady: false,
+      canOfferSidebar: true,
+      canOfferShortcut: true,
+      canOfferSubscribe: false,
+      canOfferRewardedAd: true,
+      consumeSidebarReward: vi.fn(() => false),
+      openSidebar: vi.fn(() => true),
+      requestShortcut: vi.fn(() => true),
+      requestSubscribe: vi.fn(() => true),
+      showRewardedAd: vi.fn(async () => true),
+      showInterstitialAd: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  const stats: GameOverStats = {
+    survivalSeconds: 40,
+    kills: 5,
+    level: 3,
+    bossKills: 0,
+  };
+
+  it('opens the sidebar from the result screen', () => {
+    const capabilities = createCapabilities();
+    const { ui, fake } = createHarness({ capabilities });
+
+    ui.showGameOver(stats);
+    ui.render(1 / 60);
+    // First cell of the capability grid, sitting above the restart button.
+    emitTouch(fake.touchHandlers.start, 1, 100, 505);
+
+    expect(capabilities.openSidebar).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for the home-screen shortcut from the second row', () => {
+    const capabilities = createCapabilities({
+      canOfferRewardedAd: false,
+      canOfferSubscribe: false,
+    });
+    const { ui, fake } = createHarness({ capabilities });
+
+    ui.showGameOver(stats);
+    ui.render(1 / 60);
+    // With only two buttons the grid is still two columns, so the shortcut
+    // sits at the second cell.
+    emitTouch(fake.touchHandlers.start, 1, 240, 505);
+
+    expect(capabilities.requestShortcut).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reserve room for capability buttons without a host', () => {
+    const { ui, fake, restart } = createHarness();
+
+    ui.showGameOver(stats);
+    ui.render(1 / 60);
+    emitTouch(fake.touchHandlers.start, 1, 100, 505);
+
+    // The tap lands where the sidebar button would be; nothing should happen.
+    expect(restart).not.toHaveBeenCalled();
   });
 });

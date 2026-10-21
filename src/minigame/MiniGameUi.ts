@@ -3,7 +3,10 @@ import type { PerspectiveCamera } from 'three';
 import { GAME_CONFIG } from '../game/config';
 import type { PlayerStatus } from '../game/entities/PlayerShip';
 import type { UpgradeId, UpgradeOffer } from '../game/progression/types';
-import type { InputSource } from '../platform/PlatformAdapter';
+import type {
+  GameCapabilities,
+  InputSource,
+} from '../platform/PlatformAdapter';
 import type {
   GameHud,
   GameOverStats,
@@ -38,6 +41,21 @@ export interface MiniGameUiOptions {
   onFirstTouch?: () => void;
   /** Extra line under the compliance notice, e.g. the operator name. */
   operatorLine?: string;
+  /**
+   * Open-platform entry points (sidebar, shortcut, subscribe, ads). Optional:
+   * when absent every related button is hidden, which is what the web build and
+   * older hosts get.
+   */
+  capabilities?: GameCapabilities;
+  /** Called when the player taps the rewarded-video button. */
+  onRewardedAd?: () => void;
+}
+
+type CapabilityAction = 'sidebar' | 'shortcut' | 'subscribe' | 'rewarded';
+
+interface CapabilityButton {
+  action: CapabilityAction;
+  label: string;
 }
 
 interface DamageNumber {
@@ -110,6 +128,8 @@ export class MiniGameUi implements GameHud, InputSource {
   private readonly soundControls: SoundControls;
   private readonly pauseControls: PauseControls | null;
   private readonly onRestart: () => void;
+  private readonly capabilities: GameCapabilities | null;
+  private readonly onRewardedAd: (() => void) | null;
   private readonly onFirstTouch: (() => void) | null;
   private readonly operatorLine: string | null;
   private readonly safeTop: number;
@@ -141,6 +161,8 @@ export class MiniGameUi implements GameHud, InputSource {
   private upgradeCardRects: Rect[] = [];
   private gameOverStats: GameOverStats | null = null;
   private restartRect: Rect | null = null;
+  private capabilityRects: Array<{ rect: Rect; action: CapabilityAction }> = [];
+  private interstitialTimer: ReturnType<typeof setTimeout> | null = null;
   private soundRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
   private pauseRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
   private pauseResumeRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -169,6 +191,8 @@ export class MiniGameUi implements GameHud, InputSource {
     this.soundControls = options.soundControls;
     this.pauseControls = options.pauseControls ?? null;
     this.onRestart = options.onRestart;
+    this.capabilities = options.capabilities ?? null;
+    this.onRewardedAd = options.onRewardedAd ?? null;
     this.onFirstTouch = options.onFirstTouch ?? null;
     this.operatorLine = options.operatorLine ?? null;
     this.runtime = getTtRuntime();
@@ -359,6 +383,16 @@ export class MiniGameUi implements GameHud, InputSource {
 
     this.gameOverStats = stats;
     this.restartRect = null;
+    this.capabilityRects = [];
+
+    // Let the result panel land before an interstitial covers the screen.
+    this.clearInterstitialTimer();
+    this.interstitialTimer = setTimeout(() => {
+      this.interstitialTimer = null;
+      if (!this.disposed) {
+        this.capabilities?.showInterstitialAd();
+      }
+    }, 1800);
   }
 
   /**
@@ -485,6 +519,7 @@ export class MiniGameUi implements GameHud, InputSource {
       return;
     }
     this.disposed = true;
+    this.clearInterstitialTimer();
     this.dismissNotice();
     this.reset();
     this.damageNumbers = [];
@@ -1146,7 +1181,7 @@ export class MiniGameUi implements GameHud, InputSource {
     ctx.fillRect(0, 0, this.width, this.height);
 
     const panelWidth = this.width - 48;
-    const panelHeight = 404;
+    const panelHeight = 512;
     const panelX = 24;
     const panelY = Math.max(
       this.safeTop + 24,
@@ -1248,6 +1283,127 @@ export class MiniGameUi implements GameHud, InputSource {
       '#122b33',
       'bold',
     );
+
+    this.drawCapabilityButtons(panelX, panelWidth, this.restartRect.y - 108);
+  }
+
+  /**
+   * Entry points for the platform capabilities. Buttons are laid out two per
+   * row above the restart button and simply omitted when the host or the
+   * console config cannot back them.
+   */
+  private drawCapabilityButtons(
+    panelX: number,
+    panelWidth: number,
+    top: number,
+  ): void {
+    const buttons = this.collectCapabilityButtons();
+    this.capabilityRects = [];
+
+    if (buttons.length === 0) {
+      return;
+    }
+
+    const ctx = this.context;
+    const gap = 8;
+    const columns = buttons.length === 1 ? 1 : 2;
+    const totalWidth = panelWidth - 48;
+    const buttonWidth = (totalWidth - gap * (columns - 1)) / columns;
+    const buttonHeight = 40;
+
+    buttons.forEach((button, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const x = panelX + 24 + column * (buttonWidth + gap);
+      const y = top + row * (buttonHeight + gap);
+      const rect = { x, y, width: buttonWidth, height: buttonHeight };
+
+      this.fillRoundRect(
+        x,
+        y,
+        buttonWidth,
+        buttonHeight,
+        12,
+        'rgba(216, 185, 120, 0.16)',
+      );
+      this.strokeRoundRect(
+        x,
+        y,
+        buttonWidth,
+        buttonHeight,
+        12,
+        'rgba(226, 191, 120, 0.5)',
+      );
+      ctx.textAlign = 'center';
+      this.text(button.label, x + buttonWidth / 2, y + 26, 13, GOLD_BRIGHT, 'bold');
+
+      this.capabilityRects.push({ rect, action: button.action });
+    });
+  }
+
+  private collectCapabilityButtons(): CapabilityButton[] {
+    const caps = this.capabilities;
+    if (!caps) {
+      return [];
+    }
+
+    const buttons: CapabilityButton[] = [];
+    if (caps.canOfferSidebar) {
+      buttons.push({ action: 'sidebar', label: '侧边栏礼包' });
+    }
+    if (caps.canOfferRewardedAd) {
+      buttons.push({ action: 'rewarded', label: '看视频强化' });
+    }
+    if (caps.canOfferShortcut) {
+      buttons.push({ action: 'shortcut', label: '添加到桌面' });
+    }
+    if (caps.canOfferSubscribe) {
+      buttons.push({ action: 'subscribe', label: '开启提醒' });
+    }
+
+    return buttons.slice(0, 4);
+  }
+
+  /**
+   * Runs directly inside the touch-end handler. `tt.addShortcut` and
+   * `tt.requestSubscribeMessage` are rejected unless they are called
+   * synchronously from a gesture, so nothing here may await first.
+   */
+  private clearInterstitialTimer(): void {
+    if (this.interstitialTimer !== null) {
+      clearTimeout(this.interstitialTimer);
+      this.interstitialTimer = null;
+    }
+  }
+
+  private triggerCapability(action: CapabilityAction): void {
+    const caps = this.capabilities;
+    if (!caps) {
+      return;
+    }
+
+    switch (action) {
+      case 'sidebar':
+        if (!caps.openSidebar()) {
+          this.showKillFeedback('当前环境不支持侧边栏');
+        }
+        break;
+      case 'shortcut':
+        if (!caps.requestShortcut()) {
+          this.showKillFeedback('当前环境不支持添加到桌面');
+        }
+        break;
+      case 'subscribe':
+        if (!caps.requestSubscribe()) {
+          this.showKillFeedback('提醒功能暂不可用');
+        }
+        break;
+      case 'rewarded':
+        this.onRewardedAd?.();
+        break;
+      default:
+        break;
+    }
   }
 
   private drawBar(
@@ -1505,6 +1661,14 @@ export class MiniGameUi implements GameHud, InputSource {
     }
 
     if (this.gameOverStats) {
+      const capability = this.capabilityRects.find((entry) =>
+        this.isPointInside(entry.rect, x, y),
+      );
+      if (capability) {
+        this.triggerCapability(capability.action);
+        return;
+      }
+
       if (
         this.restartRect &&
         this.isPointInside(this.restartRect, x, y)

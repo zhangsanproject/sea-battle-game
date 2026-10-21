@@ -307,7 +307,7 @@ Cannot modify Vite config: could not find a valid plugins array
 
 - `npm run build:minigame` 通过，产物 `minigame-dist/game.js` 约 700 KB（gzip 186 KB），并复制 `game.json`、`project.config.json`。
 - 产物在无 DOM、无 WebGL 的模拟运行时（`npm run smoke:minigame`）中能加载：创建两块画布、注册四个触摸回调与 `onShow/onHide`、读取屏幕信息；WebGL 不可用时画出错误提示页，而不是白屏。
-- 22 个测试文件、158 个用例通过。其中 `tests/pacing.test.ts` 锁定 3 分钟结构（6 档走完的时间点、两只 Boss 的出场时间、血量曲线上限）；`tests/minigameUi.test.ts` 覆盖摇杆死区与边界、选卡、暂停面板、伤害飘字投影、低血预警、合规启动页与隐私页、结算面板；`tests/minigamePlatform.test.ts` 覆盖存储回退、暂停入口与内存告警；`tests/records.test.ts` 覆盖战绩存档的容错；`tests/gameLoop.test.ts` 覆盖暂停时停步进但继续渲染；`tests/combat.test.ts` 覆盖护甲结算、伤害数字一致性与 Boss 索敌优先级。
+- 23 个测试文件、177 个用例通过。其中 `tests/pacing.test.ts` 锁定 3 分钟结构（6 档走完的时间点、两只 Boss 的出场时间、血量曲线上限）；`tests/minigameUi.test.ts` 覆盖摇杆死区与边界、选卡、暂停面板、伤害飘字投影、低血预警、合规启动页与隐私页、结算面板；`tests/minigamePlatform.test.ts` 覆盖存储回退、暂停入口与内存告警；`tests/records.test.ts` 覆盖战绩存档的容错；`tests/gameLoop.test.ts` 覆盖暂停时停步进但继续渲染；`tests/combat.test.ts` 覆盖护甲结算、伤害数字一致性与 Boss 索敌优先级。
 
 未验证（不要当成已兼容）：
 
@@ -335,6 +335,26 @@ Cannot modify Vite config: could not find a valid plugins array
 - 侧向机位**不跟着拉远等比放大**，否则船会被挤到左边缘——水平视野太窄，偏移 10 单位就超出画面中心。
 - 船体另有 0.8 倍的整体缩放（`PlayerShip` 的 `HULL_SCALE` 与敌舰 `visualScale` 保持一致），视觉、命中半径、瞄准点一起缩，不会出现"看着打中却判定空"的错位。
 - 越靠近屏幕上下方，能看到的距离越远（竖屏长边），所以敌人从上下方来时可视性最好；左右两侧是盲区，这是竖屏的物理限制，不是 bug。
+
+## 平台开放能力（抖音提审必接）
+
+平台提审会逐项检测四类能力，其中**侧边栏复访是错误级**——不接直接拒绝，其余三项是警告级（影响广告金优惠）。
+
+| 能力 | 实现 | 需要填的东西 |
+| --- | --- | --- |
+| 侧边栏复访 | `tt.navigateToScene({ scene: 'sidebar' })` 跳转；`tt.onShow` 的 `scene` ∈ `021036 / 101036 / 181036 / 261036` 判定为侧边栏进入，每日发一次奖励 | 可选：复访营销活动 id |
+| 添加到桌面 | 结算页按钮 → `tt.checkShortcut` 判断是否已加 → `tt.addShortcut` | 无 |
+| 订阅消息 | 结算页按钮 → `tt.requestSubscribeMessage` | 模板 id 列表 |
+| 广告 | 结算页激励视频（看完给「下一局 +1 次强化」）、每三局一次插屏 | 两个广告位 id |
+
+三个 id 都在 `src/minigame/capabilityConfig.ts` 里填，**留空时对应按钮自动隐藏**，游戏照常可玩。
+
+实现上踩过的两个坑：
+
+1. **侧边栏必须用 `tt.onShow` 的回调参数判断**，不能用 `getLaunchOptionsSync`：热启动时启动参数还是最初的，会漏发奖励。监听也必须尽早注册，我们在 `MiniGamePlatform` 构造时就挂上。
+2. **`tt.addShortcut` 和 `tt.requestSubscribeMessage` 只能在触摸回调里同步调用**，中间插一个 `await` 就会被 `must be invoked by user gesture` 拒绝。所以这两个入口直接在 `handleTouchEnd` 里调，不做任何异步前置。
+
+奖励发放：侧边栏与激励视频都给「开局 +1 次升级」，走 `ProgressionSystem.grantBonusLevelUp()`，与正常升级共用曲线和回血，避免变成另一套数值。
 
 ## 已知限制
 

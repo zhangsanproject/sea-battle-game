@@ -13,6 +13,7 @@ import { ProgressionSystem } from './progression/ProgressionSystem';
 import type { UpgradeId } from './progression/types';
 import { submitRun } from './records';
 import type { SceneManager } from './SceneManager';
+import { BONUS_UPGRADE_KEY } from '../minigame/openCapabilities';
 import { BossSystem } from './systems/BossSystem';
 import { DangerSystem } from './systems/DangerSystem';
 import { EnemyAISystem } from './systems/EnemyAISystem';
@@ -257,11 +258,47 @@ export class Game {
     }
 
     this.started = true;
+    this.grantPendingRewards();
     this.unsubscribePause = this.platform.onPause(this.handlePause);
     this.unsubscribeResume = this.platform.onResume(this.handleResume);
 
     if (!this.platform.isPaused()) {
       this.loop.start();
+    }
+  }
+
+  /**
+   * Pays out anything earned outside a run: the daily sidebar re-visit and any
+   * rewarded video the player finished. Both grant a real level-up, so the
+   * reward shows up as a card before the first shot is fired.
+   */
+  private grantPendingRewards(): void {
+    let granted = 0;
+
+    if (this.platform.capabilities?.consumeSidebarReward()) {
+      granted += 1;
+    }
+
+    // Stored rather than held in memory: the Game instance is rebuilt on every
+    // restart, but a reward earned on the result screen belongs to the next run.
+    const stored = Number.parseInt(
+      this.platform.storage.getItem(BONUS_UPGRADE_KEY) ?? '',
+      10,
+    );
+    if (Number.isFinite(stored) && stored > 0) {
+      granted += stored;
+      this.platform.storage.removeItem(BONUS_UPGRADE_KEY);
+    }
+
+    for (let index = 0; index < granted; index += 1) {
+      this.progression.grantBonusLevelUp();
+    }
+
+    if (granted > 0) {
+      // Say it out loud: a level-up card with no explanation reads like a bug.
+      this.hud.showKillFeedback(
+        granted === 1 ? '奖励到账：开局 +1 次强化' : `奖励到账：开局 +${granted} 次强化`,
+      );
     }
   }
 
