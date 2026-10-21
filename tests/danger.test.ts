@@ -35,7 +35,7 @@ describe('DangerSystem', () => {
     expect(fiveLayers.targetEnemyCount).toBe(atEnd.targetEnemyCount);
 
     // The spawn interval tightens but never collapses into a per-frame stream.
-    expect(fiveLayers.spawnIntervalSeconds).toBeGreaterThanOrEqual(0.45);
+    expect(fiveLayers.spawnIntervalSeconds).toBeGreaterThanOrEqual(0.3);
     expect(fiveLayers.spawnIntervalSeconds).toBeLessThan(
       atEnd.spawnIntervalSeconds,
     );

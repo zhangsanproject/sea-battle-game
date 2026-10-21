@@ -26,23 +26,28 @@ describe('three-minute run structure', () => {
     expect(danger.getStage(180).tier).toBe(7);
   });
 
-  it('keeps the swarm flowing faster than the player can clear it early on', () => {
+  it('keeps arrivals at or above the rate a player can actually clear', () => {
     const danger = new DangerSystem();
     const opening = danger.getStage(0);
-
-    // Spawning must out-pace a single main gun, otherwise the arena empties
-    // out between kills and the opening minute feels turn-based.
-    const mainGunDps =
-      GAME_CONFIG.weapon.projectileDamage * GAME_CONFIG.weapon.projectileCount /
-      GAME_CONFIG.weapon.fireInterval;
-    const raiderHealth = 22;
-    const killsPerSecond = mainGunDps / raiderHealth;
     const spawnsPerSecond = 1 / opening.spawnIntervalSeconds;
 
-    expect(spawnsPerSecond).toBeLessThan(killsPerSecond);
-    expect(spawnsPerSecond).toBeGreaterThanOrEqual(0.45);
-    // At least eight boats should arrive inside the opening 30 seconds, on top
-    // of the four that start on the board.
+    // Measured on an autopilot that keeps turning: about 0.8 kills per second.
+    // Theoretic single-target DPS is far higher, but turning, travel time and
+    // target switching cap the real rate. Spawn slower than that and the board
+    // stays empty, which a player reads as "no pressure, I can stand still".
+    expect(spawnsPerSecond).toBeGreaterThanOrEqual(0.8);
+
+    // Still under the raw ceiling, so the queue cannot grow without bound on
+    // the very first tier.
+    const rawKillsPerSecond =
+      (GAME_CONFIG.weapon.projectileDamage *
+        GAME_CONFIG.weapon.projectileCount) /
+      GAME_CONFIG.weapon.fireInterval /
+      22;
+    expect(spawnsPerSecond).toBeLessThan(rawKillsPerSecond);
+
+    // Eight boats should arrive inside the opening 30 seconds on top of the
+    // four that start on the board.
     expect(opening.spawnIntervalSeconds * 8).toBeLessThan(30);
   });
 

@@ -88,8 +88,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1,
     fireIntervalMultiplier: 1,
     experienceMultiplier: 1,
-    targetEnemyCount: 14,
-    spawnIntervalSeconds: 2.2,
+    targetEnemyCount: 16,
+    spawnIntervalSeconds: 1.0,
   },
   {
     tier: 2,
@@ -99,8 +99,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.08,
     fireIntervalMultiplier: 0.96,
     experienceMultiplier: 1.1,
-    targetEnemyCount: 16,
-    spawnIntervalSeconds: 1.7,
+    targetEnemyCount: 18,
+    spawnIntervalSeconds: 0.85,
   },
   {
     tier: 3,
@@ -110,8 +110,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.18,
     fireIntervalMultiplier: 0.92,
     experienceMultiplier: 1.2,
-    targetEnemyCount: 18,
-    spawnIntervalSeconds: 1.35,
+    targetEnemyCount: 20,
+    spawnIntervalSeconds: 0.7,
   },
   {
     tier: 4,
@@ -121,8 +121,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.22,
     fireIntervalMultiplier: 0.88,
     experienceMultiplier: 1.32,
-    targetEnemyCount: 20,
-    spawnIntervalSeconds: 1.1,
+    targetEnemyCount: 22,
+    spawnIntervalSeconds: 0.55,
   },
   {
     tier: 5,
@@ -132,8 +132,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.28,
     fireIntervalMultiplier: 0.84,
     experienceMultiplier: 1.44,
-    targetEnemyCount: 22,
-    spawnIntervalSeconds: 0.9,
+    targetEnemyCount: 24,
+    spawnIntervalSeconds: 0.45,
   },
   {
     tier: 6,
@@ -143,8 +143,8 @@ export const DANGER_STAGES: readonly DangerStage[] = [
     damageMultiplier: 1.35,
     fireIntervalMultiplier: 0.8,
     experienceMultiplier: 1.56,
-    targetEnemyCount: 24,
-    spawnIntervalSeconds: 0.75,
+    targetEnemyCount: 26,
+    spawnIntervalSeconds: 0.4,
   },
 ];
 

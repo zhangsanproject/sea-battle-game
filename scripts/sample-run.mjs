@@ -9,6 +9,9 @@ const HOST = process.env.CDP_HOST ?? '127.0.0.1';
 const URL_TO_OPEN = process.env.GAME_URL ?? 'http://127.0.0.1:4173/';
 const RUN_MS = Number(process.env.RUN_MS ?? 120_000);
 const SAMPLE_MS = Number(process.env.SAMPLE_MS ?? 2000);
+// HOLD_STILL=1 keeps the autopilot parked, which is how a player who never
+// moves actually fares.
+const HOLD_STILL = process.env.HOLD_STILL === '1';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -116,7 +119,7 @@ while (Date.now() - startedAt < RUN_MS) {
   })()`);
   if (pickedUp) picks += 1;
 
-  if (tick % 4 === 0) {
+  if (!HOLD_STILL && tick % 4 === 0) {
     if (held) await key('keyUp', held);
     held = order[(tick / 4) % order.length];
     await key('keyDown', held);
