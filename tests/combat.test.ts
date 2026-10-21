@@ -17,6 +17,7 @@ function createEnemy(
   profileId: EnemyProfileId,
   x: number,
   z: number,
+  isBoss = false,
 ): EnemyShip {
   return new EnemyShip({
     profile: ENEMY_PROFILES[profileId],
@@ -25,6 +26,7 @@ function createEnemy(
     heading: 0,
     initialFireDelay: 0,
     strafeDirection: 1,
+    isBoss,
   });
 }
 
@@ -284,5 +286,41 @@ describe('armour accounting', () => {
 
     enemy.takeDamage(enemy.maxHealth + enemy.profile.armor);
     expect(enemy.previewDamage(30)).toBe(0);
+  });
+});
+
+describe('target priority', () => {
+  it('aims at the boss even when an escort stands closer', () => {
+    const escort = createEnemy('raider', 5, 0);
+    const boss = createEnemy('boss', 16, 0, true);
+
+    const target = new TargetingSystem().findNearestTarget(
+      new Vector3(0, 0, 0),
+      [escort, boss],
+      GAME_CONFIG.weapon.range,
+    );
+
+    // Without this the turrets farm escorts for the whole fight and the boss
+    // never loses a single health point.
+    expect(target).toBe(boss);
+
+    escort.dispose();
+    boss.dispose();
+  });
+
+  it('falls back to the escort once the boss leaves the range', () => {
+    const escort = createEnemy('raider', 6, 0);
+    const boss = createEnemy('boss', 45, 0, true);
+
+    const target = new TargetingSystem().findNearestTarget(
+      new Vector3(0, 0, 0),
+      [escort, boss],
+      GAME_CONFIG.weapon.range,
+    );
+
+    expect(target).toBe(escort);
+
+    escort.dispose();
+    boss.dispose();
   });
 });

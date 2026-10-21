@@ -7,31 +7,60 @@ describe('DangerSystem', () => {
     const danger = new DangerSystem();
 
     expect(danger.getStage(0).tier).toBe(1);
-    expect(danger.getStage(11.99).tier).toBe(1);
-    expect(danger.getStage(12).tier).toBe(2);
-    expect(danger.getStage(35).tier).toBe(3);
-    expect(danger.getStage(140).tier).toBe(
+    expect(danger.getStage(29.99).tier).toBe(1);
+    expect(danger.getStage(30).tier).toBe(2);
+    expect(danger.getStage(60).tier).toBe(3);
+    expect(danger.getStage(150).tier).toBe(
       DANGER_STAGES[DANGER_STAGES.length - 1]?.tier,
     );
   });
 
-  it('caps danger instead of scaling forever', () => {
+  it('keeps escalating past the authored curve instead of plateauing', () => {
     const danger = new DangerSystem();
-    const lastStage = danger.getStage(Number.MAX_SAFE_INTEGER);
+    const atEnd = danger.getStage(150);
+    const oneLayer = danger.getStage(180);
+    const fiveLayers = danger.getStage(150 + 30 * 5);
 
-    expect(lastStage).toEqual(DANGER_STAGES[DANGER_STAGES.length - 1]);
-    expect(danger.getStage(999999).tier).toBe(lastStage.tier);
+    expect(oneLayer.tier).toBe(atEnd.tier + 1);
+    expect(oneLayer.healthMultiplier).toBeGreaterThan(atEnd.healthMultiplier);
+    expect(fiveLayers.healthMultiplier).toBeGreaterThan(
+      oneLayer.healthMultiplier,
+    );
+    expect(fiveLayers.damageMultiplier).toBeGreaterThan(
+      atEnd.damageMultiplier,
+    );
+
+    // Body count stays capped: more enemies would cost far more than the
+    // health growth buys, and the frame budget is already tight at 24.
+    expect(fiveLayers.targetEnemyCount).toBe(atEnd.targetEnemyCount);
+
+    // The spawn interval tightens but never collapses into a per-frame stream.
+    expect(fiveLayers.spawnIntervalSeconds).toBeGreaterThanOrEqual(0.45);
+    expect(fiveLayers.spawnIntervalSeconds).toBeLessThan(
+      atEnd.spawnIntervalSeconds,
+    );
+  });
+
+  it('synthesizes the overtime stage once per layer', () => {
+    const danger = new DangerSystem();
+
+    // getStage runs every frame, so equal layers must return the same object
+    // instead of allocating a stage per frame.
+    expect(danger.getStage(181)).toBe(danger.getStage(189));
+    expect(danger.getStage(212)).not.toBe(danger.getStage(181));
   });
 
   it('scales health, armor, damage, fire rate, and experience', () => {
     const danger = new DangerSystem();
-    const tierTwo = danger.getStage(12);
-    const scaled = danger.scaleProfile(ENEMY_PROFILES.gunboat, tierTwo);
+    const stage = danger.getStage(60);
+    const scaled = danger.scaleProfile(ENEMY_PROFILES.gunboat, stage);
 
     expect(scaled.maxHealth).toBe(
-      Math.round(ENEMY_PROFILES.gunboat.maxHealth * 1.12),
+      Math.round(ENEMY_PROFILES.gunboat.maxHealth * stage.healthMultiplier),
     );
-    expect(scaled.armor).toBe(ENEMY_PROFILES.gunboat.armor + 1);
+    expect(scaled.armor).toBe(
+      ENEMY_PROFILES.gunboat.armor + stage.armorBonus,
+    );
     expect(scaled.projectileDamage).toBeGreaterThanOrEqual(
       ENEMY_PROFILES.gunboat.projectileDamage,
     );
@@ -44,26 +73,23 @@ describe('DangerSystem', () => {
     expect(scaled.id).toBe(ENEMY_PROFILES.gunboat.id);
   });
 
-  it('keeps stage values monotonic and bounded', () => {
-    const finalStage = DANGER_STAGES[DANGER_STAGES.length - 1];
-    if (!finalStage) {
-      throw new Error('Expected danger stages');
-    }
-
+  it('keeps stage values monotonic', () => {
     let previousHealth = 0;
     let previousDamage = 0;
+    let previousCount = 0;
+    let previousInterval = Number.POSITIVE_INFINITY;
 
     for (const stage of DANGER_STAGES) {
       expect(stage.healthMultiplier).toBeGreaterThanOrEqual(previousHealth);
       expect(stage.damageMultiplier).toBeGreaterThanOrEqual(previousDamage);
-      expect(stage.healthMultiplier).toBeLessThanOrEqual(
-        finalStage.healthMultiplier,
-      );
-      expect(stage.damageMultiplier).toBeLessThanOrEqual(
-        finalStage.damageMultiplier,
+      expect(stage.targetEnemyCount).toBeGreaterThanOrEqual(previousCount);
+      expect(stage.spawnIntervalSeconds).toBeLessThanOrEqual(
+        previousInterval,
       );
       previousHealth = stage.healthMultiplier;
       previousDamage = stage.damageMultiplier;
+      previousCount = stage.targetEnemyCount;
+      previousInterval = stage.spawnIntervalSeconds;
     }
   });
 });

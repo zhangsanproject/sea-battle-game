@@ -1,4 +1,5 @@
 import {
+  DANGER_STAGES,
   ENEMY_PROFILES,
   GAME_CONFIG,
   type DangerStage,
@@ -17,7 +18,9 @@ interface SpawnPosition {
 
 export class EnemySpawner {
   private spawnTimer: number = GAME_CONFIG.spawner.initialSpawnTimer;
-  private bossSpawned = false;
+  private elapsed = 0;
+  private bossCount = 0;
+  private nextBossAt: number = GAME_CONFIG.boss.firstSpawnAtSeconds;
 
   constructor(
     private readonly enemies: EnemyManager,
@@ -27,19 +30,21 @@ export class EnemySpawner {
   ) {}
 
   update(deltaTime: number, stage: DangerStage): void {
-    if (
-      !this.bossSpawned &&
-      stage.tier >= GAME_CONFIG.boss.spawnDangerTier
-    ) {
-      this.spawnBoss(stage);
-      this.bossSpawned = true;
+    this.elapsed += deltaTime;
+
+    // Bosses run on a clock instead of a single scripted beat, so a three
+    // minute run has two clear peaks and an endless run keeps producing them.
+    const activeBoss = this.enemies.getBoss();
+    if (!activeBoss && this.elapsed >= this.nextBossAt) {
+      this.spawnBoss(stage, this.bossCount);
+      this.bossCount += 1;
+      this.nextBossAt = this.elapsed + GAME_CONFIG.boss.intervalSeconds;
       return;
     }
 
     // A boss used to freeze reinforcements for its whole lifetime, which left
     // the arena empty for the better part of a minute. Keep the swarm coming,
     // just thinner and slower so the boss still owns the fight.
-    const activeBoss = this.enemies.getBoss();
     const cap = activeBoss
       ? Math.max(
           4,
@@ -109,17 +114,27 @@ export class EnemySpawner {
     );
   }
 
-  private spawnBoss(stage: DangerStage): void {
+  private spawnBoss(stage: DangerStage, index: number): void {
     const position = this.findBossSpawnPosition();
     const playerPosition = this.player.root.position;
     const heading = Math.atan2(
       position.x - playerPosition.x,
       position.z - playerPosition.z,
     );
-    const profile = this.danger.scaleProfile(
-      ENEMY_PROFILES.boss,
-      stage,
-    );
+    // Every boss after the first is a heavier version of the same hull, so an
+    // endless run keeps escalating instead of recycling the opening fight.
+    // The danger multiplier is deliberately NOT applied here: at tier 3 it
+    // turned the 60-second boss into a 740 HP wall the player could not break
+    // before the escorts finished them off.
+    const growth = Math.pow(GAME_CONFIG.boss.healthGrowth, index);
+    const scaled = this.danger.scaleProfile(ENEMY_PROFILES.boss, stage);
+    const profile: EnemyProfile = {
+      ...scaled,
+      maxHealth: Math.max(
+        1,
+        Math.round(ENEMY_PROFILES.boss.maxHealth * growth),
+      ),
+    };
 
     this.enemies.spawnEnemy(
       profile,
@@ -133,9 +148,21 @@ export class EnemySpawner {
   }
 
   private pickEnemyProfile(stage: DangerStage): EnemyProfile {
-    const eligible = GAME_CONFIG.spawner.spawnWeights.filter(
-      (candidate) => stage.tier >= candidate.minTier,
-    );
+    // Weights stop shifting once the authored curve ends. Without the clamp the
+    // chaff would be pushed past zero and every overtime spawn would be a
+    // capital ship, which turns the run into a wall.
+    const weightTier = Math.min(stage.tier, DANGER_STAGES.length);
+    const eligible = GAME_CONFIG.spawner.spawnWeights
+      .filter((candidate) => weightTier >= candidate.minTier)
+      .map((candidate) => ({
+        profile: candidate.profile,
+        weight: Math.max(
+          0,
+          candidate.weight +
+            (candidate.weightPerTier ?? 0) * (weightTier - candidate.minTier),
+        ),
+      }))
+      .filter((candidate) => candidate.weight > 0);
 
     if (eligible.length === 0) {
       return ENEMY_PROFILES.raider;

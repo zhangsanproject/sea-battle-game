@@ -54,7 +54,9 @@ describe('EnemySpawner', () => {
         GAME_CONFIG.spawner.eliteArmorBonus,
     );
 
-    spawner.update(100, tierOne);
+    // A short step so the boss clock (60s) is still in the future, but long
+    // enough to clear the 2.2s spawn timer.
+    spawner.update(3, tierOne);
     expect(enemies.getEnemies()).toHaveLength(5);
 
     enemies.dispose();
@@ -74,8 +76,9 @@ describe('EnemySpawner', () => {
     const camera = new PerspectiveCamera();
     camera.position.set(0, 18, 24);
 
-    const tierTwo = danger.getStage(12);
-    spawner.update(7, tierTwo);
+    // The boss clock fires at 60 s, which lands in danger tier 3.
+    const tierThree = danger.getStage(61);
+    spawner.update(61, tierThree);
 
     const boss = enemies.getBoss();
     expect(boss).not.toBeNull();
@@ -83,7 +86,7 @@ describe('EnemySpawner', () => {
     enemies.update(5, 0, camera);
     expect(enemies.getBoss()).toBeNull();
 
-    spawner.update(7, danger.getStage(35));
+    spawner.update(7, danger.getStage(61));
 
     const activeEnemies = enemies.getEnemies();
     const spawned = activeEnemies[activeEnemies.length - 1];
@@ -108,9 +111,9 @@ describe('EnemySpawner', () => {
       danger,
       () => 0.8,
     );
-    const tierTwo = danger.getStage(12);
+    const stage = danger.getStage(150);
 
-    spawner.update(7, tierTwo);
+    spawner.update(61, stage);
 
     expect(enemies.getEnemies()).toHaveLength(5);
     const boss = enemies.getBoss();
@@ -120,20 +123,19 @@ describe('EnemySpawner', () => {
     }
 
     expect(boss.isBoss).toBe(true);
-    expect(boss.profile.maxHealth).toBe(
-      Math.round(ENEMY_PROFILES.boss.maxHealth * 1.12),
-    );
+    // The boss keeps its authored hull; only successive bosses scale up.
+    expect(boss.profile.maxHealth).toBe(ENEMY_PROFILES.boss.maxHealth);
     expect(boss.profile.armor).toBeGreaterThan(
       ENEMY_PROFILES.boss.armor,
     );
 
     // Reinforcements continue during a boss fight instead of drying up, but
     // they must stay below the normal cap.
-    spawner.update(100, tierTwo);
+    spawner.update(100, stage);
     const escorts = enemies.getEnemies().length - 1;
     expect(escorts).toBeGreaterThan(4);
     expect(escorts).toBeLessThanOrEqual(
-      Math.ceil(tierTwo.targetEnemyCount * GAME_CONFIG.spawner.bossReinforcementFactor),
+      Math.ceil(stage.targetEnemyCount * GAME_CONFIG.spawner.bossReinforcementFactor),
     );
 
     enemies.dispose();

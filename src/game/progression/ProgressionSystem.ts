@@ -118,6 +118,18 @@ export class ProgressionSystem {
 
     if (gainedLevels > 0) {
       this.player.status.level = this.level;
+      // Levelling is the only renewable source of hull repair in a run that
+      // has no health pickups. Without it a long run is a one-way slide into
+      // zero no matter how well the player plays.
+      const heal = Math.round(
+        this.player.status.maxHealth *
+          GAME_CONFIG.progression.levelUpHealRatio *
+          gainedLevels,
+      );
+      this.player.status.health = Math.min(
+        this.player.status.maxHealth,
+        this.player.status.health + heal,
+      );
     }
 
     return gainedLevels;
