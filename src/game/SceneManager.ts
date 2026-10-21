@@ -236,12 +236,18 @@ export class SceneManager {
     const viewScale = this.getViewScale();
     const smoothing = 1 - Math.exp(-4.8 * delta);
 
-    this.desiredCameraPosition
-      .copy(focusPosition)
-      .addScaledVector(CAMERA_OFFSET, viewScale);
+    // Only the height and the pull-back distance scale with the view. Scaling
+    // the lateral offset too pushed the player ship into the left edge once
+    // portrait pulled the camera back, because the horizontal field of view is
+    // barely 20 degrees wide.
+    this.desiredCameraPosition.set(
+      focusPosition.x + CAMERA_OFFSET.x * 0.35,
+      focusPosition.y + CAMERA_OFFSET.y * viewScale,
+      focusPosition.z + CAMERA_OFFSET.z * viewScale,
+    );
     this.desiredLookTarget
       .copy(focusPosition)
-      .addScaledVector(LOOK_AHEAD, Math.min(viewScale, 1.2));
+      .addScaledVector(LOOK_AHEAD, Math.min(viewScale, 1.8));
 
     this.camera.position.lerp(this.desiredCameraPosition, smoothing);
     this.cameraTarget.lerp(this.desiredLookTarget, smoothing);
@@ -427,6 +433,9 @@ export class SceneManager {
       return 1;
     }
 
-    return THREE.MathUtils.clamp(0.94 / this.camera.aspect, 1, 1.55);
+    // Portrait panels are narrow: at 1.55 the horizontal half-width was under
+    // 10 units while the guns reach 22, so enemies died off-screen. Pulling
+    // back further widens the board and shrinks the ship at the same time.
+    return THREE.MathUtils.clamp(0.94 / this.camera.aspect, 1, 2.45);
   }
 }

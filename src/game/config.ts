@@ -481,8 +481,8 @@ export const GAME_CONFIG = {
     },
   },
   spawner: {
-    minSpawnDistance: 16,
-    maxSpawnDistance: 24,
+    minSpawnDistance: 11,
+    maxSpawnDistance: 15,
     initialSpawnTimer: 2.5,
     spawnWeights: [
       { profile: 'raider', weight: 0.3, weightPerTier: -0.05, minTier: 1 },

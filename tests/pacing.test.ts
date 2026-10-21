@@ -112,3 +112,33 @@ describe('three-minute run structure', () => {
     expect(Math.pow(GAME_CONFIG.boss.healthGrowth, 3)).toBeGreaterThan(2);
   });
 });
+
+describe('portrait framing', () => {
+  it('keeps the visible half-width at least as wide as the spawn ring', () => {
+    // A portrait phone is the tight case: the camera pulls back by
+    // 0.94 / aspect, which keeps the horizontal half-width constant no matter
+    // how tall the screen is. If that width drops below the closest spawn
+    // distance, boats die off-screen and the player never sees them arrive.
+    const aspect = 390 / 844;
+    const viewScale = Math.min(Math.max(0.94 / aspect, 1), 2.45);
+    const cameraDistance = Math.hypot(10, 16.5, 22) * viewScale;
+    const halfHeight = Math.tan((48 / 2) * (Math.PI / 180));
+    const halfWidth = cameraDistance * halfHeight * aspect;
+
+    expect(halfWidth).toBeGreaterThanOrEqual(
+      GAME_CONFIG.spawner.minSpawnDistance,
+    );
+  });
+
+  it('does not shrink the player ship below a recognisable size', () => {
+    const aspect = 390 / 844;
+    const viewScale = Math.min(Math.max(0.94 / aspect, 1), 2.45);
+    const cameraDistance = Math.hypot(10, 16.5, 22) * viewScale;
+    const visibleHeight = 2 * cameraDistance * Math.tan((48 / 2) * (Math.PI / 180));
+    // The hull silhouette is about 6 units long.
+    const shipShare = 6 / visibleHeight;
+
+    expect(shipShare).toBeGreaterThan(0.05);
+    expect(shipShare).toBeLessThan(0.16);
+  });
+});
