@@ -126,8 +126,11 @@ export class SceneManager {
 
     this.renderer = new THREE.WebGLRenderer(rendererOptions);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    // ACES desaturates and lifts the blacks, which made the whole frame read as
+    // a washed-out gradient. Neutral keeps the saturation and the contrast,
+    // so the ocean and the hull outlines actually separate.
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
     // three r186 removed PCFSoftShadowMap; the renderer silently fell back to
     // PCFShadowMap, so request it directly and keep the console clean.
@@ -139,10 +142,12 @@ export class SceneManager {
       this.container.appendChild(this.renderer.domElement);
     }
 
-    const hemisphereLight = new THREE.HemisphereLight(0xe1f6ff, 0x19465a, 1.45);
+    // Ambient fill used to dominate the key light, which flattened every
+    // hull into a single tone. Trade some fill for key so faces separate.
+    const hemisphereLight = new THREE.HemisphereLight(0xe1f6ff, 0x19465a, 1.05);
     this.scene.add(hemisphereLight);
 
-    this.sun = new THREE.DirectionalLight(0xffefd0, 2.7);
+    this.sun = new THREE.DirectionalLight(0xffefd0, 3.1);
     this.sun.position.copy(SUN_OFFSET);
     this.sun.castShadow = true;
     const shadowMapSize = Math.max(

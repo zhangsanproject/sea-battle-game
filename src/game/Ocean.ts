@@ -78,30 +78,38 @@ const fragmentShader = /* glsl */ `
     waterColor = mix(waterColor, uSkyColor, fresnel * 0.34);
 
     vec3 halfDirection = normalize(sunDirection + viewDirection);
-    float specular = pow(max(dot(normal, halfDirection), 0.0), 105.0);
-    waterColor += uSunColor * specular * 1.15;
+    // 105 was so tight that only a pin-prick of highlight survived, and at
+    // this camera distance it read as flat colour. A wider lobe gives the
+    // surface something to break up the gradient.
+    float specular = pow(max(dot(normal, halfDirection), 0.0), 62.0);
+    waterColor += uSunColor * specular * 1.2;
 
     vec2 ripplePoint = vWorldPosition.xz;
     float rippleA = sin(ripplePoint.x * 0.88 + uTime * 1.7) *
       cos(ripplePoint.y * 0.61 - uTime * 1.2);
     float rippleB = sin((ripplePoint.x + ripplePoint.y) * 1.28 - uTime * 2.15);
-    float ripplePattern = rippleA * 0.65 + rippleB * 0.35;
+    // A third, tighter layer. Close to the camera it supplies the fine
+    // chop the eye reads as "water"; far away it is absorbed by fog and
+    // pixel density, so it costs nothing in aliasing.
+    float rippleC = sin(ripplePoint.x * 2.45 - uTime * 3.1) *
+      cos(ripplePoint.y * 2.15 + uTime * 2.7);
+    float ripplePattern = rippleA * 0.5 + rippleB * 0.3 + rippleC * 0.2;
 
     vec3 detailedNormal = normalize(normal + vec3(
-      rippleA * 0.085 + rippleB * 0.035,
+      rippleA * 0.16 + rippleB * 0.06 + rippleC * 0.045,
       0.0,
-      rippleB * 0.075 - rippleA * 0.025
+      rippleB * 0.14 - rippleA * 0.05 + rippleC * 0.04
     ));
     float detailSpecular = pow(
       max(dot(detailedNormal, halfDirection), 0.0),
-      72.0
+      42.0
     );
-    waterColor += uSunColor * detailSpecular * 0.5;
+    waterColor += uSunColor * detailSpecular * 0.55;
 
-    float glimmer = smoothstep(0.58, 0.95, ripplePattern);
-    waterColor = mix(waterColor, uShallowColor, glimmer * 0.12);
+    float glimmer = smoothstep(0.45, 0.9, ripplePattern);
+    waterColor = mix(waterColor, uShallowColor, glimmer * 0.18);
 
-    float crest = smoothstep(0.4, 0.62, vWaveHeight);
+    float crest = smoothstep(0.3, 0.55, vWaveHeight);
     float crestStreak = smoothstep(
       0.7,
       0.98,
@@ -115,7 +123,7 @@ const fragmentShader = /* glsl */ `
     waterColor = mix(
       waterColor,
       uFoamColor,
-      crest * (0.045 + glimmer * 0.06 + crestStreak * 0.1)
+      crest * (0.08 + glimmer * 0.1 + crestStreak * 0.16)
     );
 
     float distanceToCamera = length(cameraPosition - vWorldPosition);
