@@ -16,7 +16,7 @@ const OVERTIME_EXPERIENCE_GROWTH = 1.08;
 const OVERTIME_INTERVAL_FACTOR = 0.96;
 /** Armour creeps up far more slowly: flat armour guts low-damage side guns. */
 const OVERTIME_LAYERS_PER_ARMOUR = 3;
-const MIN_SPAWN_INTERVAL_SECONDS = 0.3;
+const MIN_SPAWN_INTERVAL_SECONDS = 0.2;
 /** 15 minutes of overtime; beyond this the multipliers would just overflow. */
 const MAX_OVERTIME_LAYERS = 30;
 

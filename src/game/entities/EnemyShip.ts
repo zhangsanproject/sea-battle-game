@@ -159,9 +159,18 @@ export class EnemyShip {
     this.muzzleFlash.userData.noShadow = true;
     this.visual.add(this.muzzleMarker, this.muzzleFlash);
 
+    // Only capital ships, elites and bosses cast shadows. With 30+ hulls on
+    // screen the shadow pass doubles the draw calls, and a destroyer-sized
+    // shadow on open water is barely readable anyway.
+    const castsShadow =
+      this.isBoss ||
+      this.isElite ||
+      options.profile.visualScale >= 0.7;
+
     this.visual.traverse((object) => {
       if (object instanceof THREE.Mesh) {
-        object.castShadow = object.userData.noShadow !== true;
+        object.castShadow =
+          object.userData.noShadow !== true && castsShadow;
         object.receiveShadow = true;
       }
     });
