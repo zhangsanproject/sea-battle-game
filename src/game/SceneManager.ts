@@ -81,7 +81,12 @@ export class SceneManager {
   private readonly ocean: Ocean;
   private readonly sun: THREE.DirectionalLight;
   private readonly resizeObserver: ResizeObserver | null;
-  private readonly maxPixelRatio: number;
+  /**
+   * Upper bound for the device pixel ratio. Not readonly: some hosts clamp an
+   * oversized drawing buffer, and the real cap is discovered after the first
+   * resize.
+   */
+  private maxPixelRatio: number;
   private readonly cameraTarget = new THREE.Vector3();
   private readonly desiredCameraPosition = new THREE.Vector3();
   private readonly desiredLookTarget = new THREE.Vector3();
@@ -101,7 +106,9 @@ export class SceneManager {
     this.container = options.container ?? null;
     this.maxPixelRatio = options.maxPixelRatio ?? detectMaxPixelRatio();
     this.scene.background = new THREE.Color(FOG_COLOR);
-    this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0044);
+    // Lighter haze than the original 0.0044: at that density the far half of
+    // the board washed out and read as a soft picture even at full resolution.
+    this.scene.fog = new THREE.FogExp2(FOG_COLOR, 0.0032);
 
     this.camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 1200);
     this.camera.position.copy(CAMERA_OFFSET);
@@ -303,10 +310,34 @@ export class SceneManager {
 
     this.renderer.setSize(width, height, false);
     this.applyPixelRatio();
+    this.acceptHostBufferLimit(width, height);
 
     this.camera.aspect = width / height;
     this.camera.fov = this.camera.aspect < 0.8 ? 48 : CAMERA_FOV;
     this.camera.updateProjectionMatrix();
+  }
+
+  /**
+   * Some mini-game hosts silently clamp an oversized drawing buffer. If the
+   * buffer comes back smaller than what we asked for, treat that as the real
+   * ceiling so the ratio stays honest instead of asking again every resize.
+   */
+  private acceptHostBufferLimit(width: number, height: number): void {
+    const canvas = this.renderer.domElement;
+    if (!canvas || canvas.width <= 0 || width <= 0 || height <= 0) {
+      return;
+    }
+
+    // Use the smaller of the two axes: a host that only clamps the buffer
+    // length would otherwise leave us thinking the ratio survived.
+    const appliedRatio = Math.min(canvas.width / width, canvas.height / height);
+    if (appliedRatio + 0.01 >= this.basePixelRatio) {
+      return;
+    }
+
+    this.maxPixelRatio = Math.max(1, appliedRatio);
+    this.basePixelRatio = this.maxPixelRatio;
+    this.applyPixelRatio();
   }
 
   private applyPixelRatio(): void {

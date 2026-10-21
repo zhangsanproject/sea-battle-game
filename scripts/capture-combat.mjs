@@ -3,6 +3,7 @@
 import { writeFileSync } from 'node:fs';
 
 const PORT = process.env.CDP_PORT ?? '9333';
+const HOST = process.env.CDP_HOST ?? '127.0.0.1';
 const URL_TO_OPEN = process.env.GAME_URL ?? 'http://127.0.0.1:4173/';
 const OUT = process.env.OUT ?? 'C:/Users/Administrator/AppData/Local/Temp/combat.png';
 const RUN_MS = Number(process.env.RUN_MS ?? 26_000);
@@ -12,7 +13,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function findPage() {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
-      const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+      const list = await (await fetch(`http://${HOST}:${PORT}/json/list`)).json();
       const page = list.find((entry) => entry.type === 'page');
       if (page?.webSocketDebuggerUrl) return page;
     } catch {
@@ -79,6 +80,18 @@ async function key(type, name) {
 
 await send('Page.enable');
 await send('Runtime.enable');
+
+// Optional phone emulation: DPR=3 renders the page as a 3x panel would.
+const dpr = Number(process.env.DPR ?? 0);
+if (dpr > 0) {
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: Number(process.env.DEVICE_WIDTH ?? 390),
+    height: Number(process.env.DEVICE_HEIGHT ?? 844),
+    deviceScaleFactor: dpr,
+    mobile: true,
+  });
+}
+
 await send('Page.navigate', { url: URL_TO_OPEN });
 await sleep(3500);
 

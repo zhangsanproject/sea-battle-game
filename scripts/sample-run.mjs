@@ -5,6 +5,7 @@
 // Usage: start a static server on GAME_URL and Edge with
 // --remote-debugging-port=9333, then `node scripts/sample-run.mjs`.
 const PORT = process.env.CDP_PORT ?? '9333';
+const HOST = process.env.CDP_HOST ?? '127.0.0.1';
 const URL_TO_OPEN = process.env.GAME_URL ?? 'http://127.0.0.1:4173/';
 const RUN_MS = Number(process.env.RUN_MS ?? 120_000);
 const SAMPLE_MS = Number(process.env.SAMPLE_MS ?? 2000);
@@ -14,7 +15,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function findPage() {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
-      const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+      const list = await (await fetch(`http://${HOST}:${PORT}/json/list`)).json();
       const page = list.find((entry) => entry.type === 'page');
       if (page?.webSocketDebuggerUrl) return page;
     } catch {
