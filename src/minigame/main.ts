@@ -180,13 +180,14 @@ function bootstrap(): void {
         width: ui.width,
         height: ui.height,
         pixelRatio: ui.pixelRatio,
-        // Touch devices only; never probe window.matchMedia here, the helium
-        // runtime throws "Illegal invocation" for it.
-        maxPixelRatio: 1.5,
-        // The 2D layer already smooths the composite, and dropping MSAA buys
-        // a measurable amount of fill rate on mid-range phones.
+        // Match the 2D layer one-to-one. Anything lower means the 3D frame is
+        // drawn into a smaller buffer and then stretched by drawImage, which
+        // is the main reason the phone build looked soft.
+        maxPixelRatio: ui.pixelRatio,
+        // At 2x-3x device ratio the extra MSAA pass buys very little, so the
+        // resolution budget goes into more pixels instead of smoother edges.
         antialias: false,
-        shadowMapSize: 768,
+        shadowMapSize: 1024,
       });
       activeScene = sceneManager;
       ui.attachCamera(sceneManager.camera);

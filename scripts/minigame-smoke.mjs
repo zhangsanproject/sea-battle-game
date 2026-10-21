@@ -223,8 +223,8 @@ check(
   'expected the startup failure to be logged with context',
 );
 check(
-  observations.transforms.some((matrix) => matrix[0] === 2 && matrix[3] === 2),
-  'expected the HUD canvas to be scaled by the capped device pixel ratio',
+  observations.transforms.some((matrix) => matrix[0] === 3 && matrix[3] === 3),
+  'expected the HUD canvas to follow the full device pixel ratio',
 );
 
 // Scenario B: the bundle is loaded where no `tt` exists (for example a browser).

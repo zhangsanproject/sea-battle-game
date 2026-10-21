@@ -177,7 +177,11 @@ export class MiniGameUi implements GameHud, InputSource {
     const info = this.runtime?.getSystemInfoSync();
     this.width = info?.screenWidth ?? 375;
     this.height = info?.screenHeight ?? 667;
-    this.pixelRatio = Math.min(info?.pixelRatio ?? 2, 2);
+    // The 2D layer is cheap to rasterise and it carries every number the
+    // player actually reads, so it follows the real device ratio. Capping at
+    // 2x left the whole canvas upscaled on 3x panels, which blurred the 3D
+    // composite along with the text.
+    this.pixelRatio = Math.min(info?.pixelRatio ?? 2, 3);
 
     const safeArea = info?.safeArea;
     this.safeTop = safeArea?.top ?? 0;

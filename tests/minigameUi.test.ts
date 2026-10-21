@@ -111,14 +111,16 @@ afterEach(() => {
 });
 
 describe('MiniGameUi screen setup', () => {
-  it('caps the device pixel ratio and sizes the canvas in device pixels', () => {
+  it('follows the device pixel ratio so the canvas is not upscaled', () => {
     const { ui, screenCanvas } = createHarness();
 
     expect(ui.width).toBe(375);
     expect(ui.height).toBe(812);
-    expect(ui.pixelRatio).toBe(2);
-    expect(screenCanvas.width).toBe(750);
-    expect(screenCanvas.height).toBe(1624);
+    // The fake runtime reports 3x, which must reach the canvas untouched:
+    // capping at 2x left the whole composite stretched on 3x panels.
+    expect(ui.pixelRatio).toBe(3);
+    expect(screenCanvas.width).toBe(1125);
+    expect(screenCanvas.height).toBe(2436);
   });
 
   it('draws the scene canvas into the HUD canvas every frame', () => {

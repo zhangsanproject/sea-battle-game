@@ -7,6 +7,19 @@ const LOOK_AHEAD = new THREE.Vector3(0, 0.9, -2.4);
 const FOG_COLOR = 0x93c7d4;
 const SUN_OFFSET = new THREE.Vector3(26, 34, 14);
 
+/** Lowest multiplier the sampler will settle on before it stops degrading. */
+const MIN_QUALITY_SCALE = 0.7;
+/** Sustained frame time above this means the current ratio is too expensive. */
+const DOWNGRADE_FRAME_TIME = 0.024;
+/**
+ * Frame time below this means there is headroom to render sharper. A locked
+ * 60 Hz loop sits at 16.7 ms, so the threshold has to stay above that or the
+ * ratio could never climb back once it had dropped.
+ */
+const UPGRADE_FRAME_TIME = 0.0175;
+const DOWNGRADE_COOLDOWN = 2.5;
+const UPGRADE_COOLDOWN = 3;
+
 export interface SceneManagerOptions {
   /** Web container. The renderer canvas is appended to it. */
   container?: HTMLElement | null;
@@ -317,7 +330,11 @@ export class SceneManager {
     this.qualitySampleTime += delta;
     this.qualitySampleFrames += 1;
 
-    if (this.qualitySampleFrames < 120) {
+    // A 45-frame window is under a second at 60 fps and still long enough to
+    // ignore a single hitch. The old 120-frame window took four seconds to
+    // react on a 30 fps device, which is a long time to sit at the wrong
+    // resolution.
+    if (this.qualitySampleFrames < 45) {
       return;
     }
 
@@ -327,27 +344,30 @@ export class SceneManager {
     this.qualitySampleFrames = 0;
 
     if (
-      averageFrameTime > 0.024 &&
-      this.qualityScale > 0.66 &&
+      averageFrameTime > DOWNGRADE_FRAME_TIME &&
+      this.qualityScale > MIN_QUALITY_SCALE &&
       this.qualityChangeCooldown === 0
     ) {
-      this.qualityScale = Math.max(0.66, this.qualityScale - 0.18);
-      this.qualityChangeCooldown = 4;
+      this.qualityScale = Math.max(
+        MIN_QUALITY_SCALE,
+        this.qualityScale - 0.18,
+      );
+      this.qualityChangeCooldown = DOWNGRADE_COOLDOWN;
       this.applyPixelRatio();
       return;
     }
 
-    // Recover slowly once the device has proven it can hold a comfortable
-    // frame time; without this a single loading hitch would downgrade the
-    // whole session permanently.
+    // Recover once the device has proven it can hold a comfortable frame time;
+    // without this a single loading hitch would downgrade the whole session
+    // permanently, and the picture would never get sharp again.
     if (
-      averageFrameTime < 0.0145 &&
+      averageFrameTime < UPGRADE_FRAME_TIME &&
       this.qualityScale < 1 &&
       this.qualityChangeCooldown === 0 &&
       !this.qualityLocked
     ) {
       this.qualityScale = Math.min(1, this.qualityScale + 0.08);
-      this.qualityChangeCooldown = 6;
+      this.qualityChangeCooldown = UPGRADE_COOLDOWN;
       this.applyPixelRatio();
     }
   }
@@ -362,7 +382,7 @@ export class SceneManager {
     }
 
     this.qualityLocked = true;
-    this.qualityScale = 0.66;
+    this.qualityScale = MIN_QUALITY_SCALE;
     this.qualityChangeCooldown = 10;
     this.applyPixelRatio();
   }
